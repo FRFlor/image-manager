@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "enables the default permissions for image viewer",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:app:default",
+    "core:window:default",
+    "fs:default",
+    "fs:read-all",
+    "fs:read-dirs",
+    "fs:read-meta",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save"
+  ]
+}
