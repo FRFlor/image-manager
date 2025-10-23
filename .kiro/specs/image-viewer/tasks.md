@@ -13,7 +13,7 @@
   - Create service interfaces for FileSystemService and SessionService
   - _Requirements: 1.1, 2.1, 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 3. Build Rust backend commands for file system operations
+- [x] 3. Build Rust backend commands for file system operations
   - Implement browse_folder command for directory traversal
   - Create read_image_file command with image metadata extraction
   - Add get_supported_image_types command
