@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "name": "Health Check on Save",
+  "description": "Performs TypeScript and Cargo health checks when source files are modified to ensure the application remains in good standing",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.ts",
+      "src/**/*.vue",
+      "src-tauri/src/**/*.rs",
+      "src-tauri/Cargo.toml"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run health checks for this project. First run `pnpm vue-tsc --noEmit` to check TypeScript compilation, then run `cargo check` in the src-tauri directory to check Rust compilation. Run these in the background and show a notification when complete. Stop on the first error encountered. Only proceed if you feel it's reasonable given the current context - if you're in the middle of something important, you can delay the check."
+  }
+}
