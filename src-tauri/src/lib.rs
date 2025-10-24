@@ -4,6 +4,10 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use image::io::Reader as ImageReader;
 use uuid::Uuid;
+use tauri::{
+    Emitter,
+    menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem},
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileEntry {
@@ -274,15 +278,93 @@ async fn open_image_dialog(app_handle: tauri::AppHandle) -> Result<Option<String
 }
 
 #[tauri::command]
-async fn save_session_dialog(_session_data: SessionData) -> Result<Option<String>, String> {
-    // Implementation will be added in task 11
-    Ok(None)
+async fn save_session_dialog(app_handle: tauri::AppHandle, session_data: SessionData) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::oneshot;
+    
+    let (tx, rx) = oneshot::channel();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+    
+    // Create a default filename with timestamp if no name is provided
+    let default_name = match &session_data.name {
+        Some(name) => format!("{}.session.json", name),
+        None => {
+            let now = chrono::Utc::now();
+            format!("session_{}.session.json", now.format("%Y%m%d_%H%M%S"))
+        }
+    };
+    
+    app_handle.dialog().file()
+        .add_filter("Session Files", &["json"])
+        .set_file_name(&default_name)
+        .save_file(move |file_path| {
+            if let Ok(mut sender) = tx.lock() {
+                if let Some(tx) = sender.take() {
+                    let _ = tx.send(file_path);
+                }
+            }
+        });
+    
+    match rx.await {
+        Ok(Some(file_path)) => {
+            let path_buf = file_path.as_path().unwrap();
+            let path_str = path_buf.to_string_lossy().to_string();
+            
+            // Serialize session data to JSON
+            let json_data = serde_json::to_string_pretty(&session_data)
+                .map_err(|e| format!("Failed to serialize session data: {}", e))?;
+            
+            // Write to file
+            std::fs::write(&path_buf, json_data)
+                .map_err(|e| format!("Failed to write session file: {}", e))?;
+            
+            println!("Session saved to: {}", path_str);
+            Ok(Some(path_str))
+        }
+        Ok(None) => Ok(None), // User cancelled the dialog
+        Err(_) => Err("Dialog operation failed".to_string()),
+    }
 }
 
 #[tauri::command]
-async fn load_session_dialog() -> Result<Option<SessionData>, String> {
-    // Implementation will be added in task 11
-    Ok(None)
+async fn load_session_dialog(app_handle: tauri::AppHandle) -> Result<Option<SessionData>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::oneshot;
+    
+    let (tx, rx) = oneshot::channel();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+    
+    app_handle.dialog().file()
+        .add_filter("Session Files", &["json"])
+        .pick_file(move |file_path| {
+            if let Ok(mut sender) = tx.lock() {
+                if let Some(tx) = sender.take() {
+                    let _ = tx.send(file_path);
+                }
+            }
+        });
+    
+    match rx.await {
+        Ok(Some(file_path)) => {
+            let path_buf = file_path.as_path().unwrap();
+            let path_str = path_buf.to_string_lossy().to_string();
+            
+            // Read the file
+            let json_data = std::fs::read_to_string(&path_buf)
+                .map_err(|e| format!("Failed to read session file: {}", e))?;
+            
+            // Deserialize JSON data
+            let session_data: SessionData = serde_json::from_str(&json_data)
+                .map_err(|e| format!("Failed to parse session data: {}", e))?;
+            
+            println!("Session loaded from: {}", path_str);
+            Ok(Some(session_data))
+        }
+        Ok(None) => Ok(None), // User cancelled the dialog
+        Err(_) => Err("Dialog operation failed".to_string()),
+    }
 }
 
 #[tauri::command]
@@ -342,6 +424,8 @@ async fn load_auto_session() -> Result<Option<SessionData>, String> {
     Ok(Some(session_data))
 }
 
+// Menu functionality will be implemented separately
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -359,6 +443,38 @@ pub fn run() {
             load_auto_session
         ])
         .setup(|app| {
+            // --- Build the application menu ---
+            // "File" submenu with our custom items and the native Close Window
+            let file_menu = SubmenuBuilder::new(app, "File")
+                .text("save_session",  "Save Session")
+                .text("load_session", "Load Session")
+                .separator()
+                // Keep the platform-native Close Window (Cmd/Ctrl+W etc.)
+                .item(&PredefinedMenuItem::close_window(app, Some("Close Window"))?)
+                .build()?;
+
+            let app_menu = MenuBuilder::new(app)
+                .items(&[&file_menu]) // add more submenus here if you like
+                .build()?;
+
+            app.set_menu(app_menu)?;
+
+            // --- Handle menu clicks ---
+            // Dispatch simple events to the frontend. (Or perform Rust logic here)
+            app.on_menu_event(|app_handle, event| {
+                match event.id().0.as_str() {
+                    "save_session" => {
+                        // Frontend can listen to this and call save routine / command
+                        let _ = app_handle.emit("menu-save-session", ());
+                    }
+                    "load_session" => {
+                        let _ = app_handle.emit("menu-load-session", ());
+                    }
+                    _ => {}
+                }
+            });
+
+            // keep your existing logging init
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -366,6 +482,7 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
             Ok(())
         })
         .run(tauri::generate_context!())

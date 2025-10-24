@@ -846,11 +846,56 @@ const loadAutoSession = async () => {
   }
 }
 
+const saveSessionDialog = async () => {
+  console.log('saveSessionDialog called')
+  
+  if (tabs.value.size === 0) {
+    console.log('No tabs to save')
+    return false
+  }
+
+  try {
+    const sessionData = createSessionData()
+    console.log('Created session data for dialog save:', sessionData)
+    const savedPath = await sessionService.saveSessionDialog(sessionData)
+    if (savedPath) {
+      console.log('Session saved to:', savedPath)
+      return true
+    } else {
+      console.log('Session save cancelled by user')
+      return false
+    }
+  } catch (error) {
+    console.error('Failed to save session via dialog:', error)
+    return false
+  }
+}
+
+const loadSessionDialog = async () => {
+  console.log('loadSessionDialog called')
+  try {
+    const sessionData = await sessionService.loadSessionDialog()
+    console.log('Loaded session data from dialog:', sessionData)
+    if (sessionData) {
+      await restoreFromSession(sessionData)
+      console.log('Session restored successfully from dialog')
+      return true
+    }
+    console.log('No session data loaded (user cancelled)')
+    return false
+  } catch (error) {
+    console.error('Failed to load session via dialog:', error)
+    return false
+  }
+}
+
 // Expose methods for parent component
 defineExpose({
   openImage,
   saveAutoSession,
   loadAutoSession,
+  saveSessionDialog,
+  loadSessionDialog,
   createSessionData,
   restoreFromSession
 })

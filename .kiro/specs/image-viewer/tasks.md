@@ -92,11 +92,10 @@
   - Handle missing image files during session restore
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-- [ ] 12. Create manual session save/load functionality
-  - Implement save_session_dialog and load_session_dialog Rust commands
-  - Create SessionManager.vue component with save/load UI
-  - Add native file dialogs with .session.json filtering
-  - Implement session data serialization/deserialization
+- [x] 12. Create manual session save/load functionality
+  - Implement save_session_dialog and load_session_dialog Rust commands using native file dialogs
+  - Integrate save/load session into the Window Menu under "File > Save Session" and "File > Close Session". Keep "File > Close Window" functional.
+  - Add native file dialogs with .session.json filtering and default extensions
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
 
 - [x] 10. Integrate all components in main application

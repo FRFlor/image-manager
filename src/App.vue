@@ -42,7 +42,7 @@ onMounted(async () => {
     appState.value.supportedFormats = formats
     isLoading.value = false
     
-    // Set up Tauri window close event listener
+    // Set up Tauri event listeners
     try {
       const { listen } = await import('@tauri-apps/api/event')
       
@@ -57,9 +57,48 @@ onMounted(async () => {
         }
       })
       
-      console.log('Window close listener set up successfully')
+      // Listen for menu save session event
+      await listen('menu-save-session', async () => {
+        console.log('Menu save session requested')
+        try {
+          if (appState.value.currentView === 'image-viewer' && imageViewer.value) {
+            await imageViewer.value.saveSessionDialog()
+          } else {
+            console.log('No active session to save')
+          }
+        } catch (error) {
+          console.error('Failed to save session from menu:', error)
+        }
+      })
+      
+      // Listen for menu load session event
+      await listen('menu-load-session', async () => {
+        console.log('Menu load session requested')
+        try {
+          // Switch to image viewer first to ensure component is available
+          appState.value.currentView = 'image-viewer'
+          
+          // Wait for component to mount
+          setTimeout(async () => {
+            try {
+              const sessionLoaded = await imageViewer.value?.loadSessionDialog()
+              if (!sessionLoaded) {
+                // If no session was loaded (user cancelled), go back to folder browser
+                appState.value.currentView = 'folder-browser'
+              }
+            } catch (error) {
+              console.error('Failed to load session from menu:', error)
+              appState.value.currentView = 'folder-browser'
+            }
+          }, 100)
+        } catch (error) {
+          console.error('Failed to handle menu load session:', error)
+        }
+      })
+      
+      console.log('Event listeners set up successfully')
     } catch (error) {
-      console.error('Failed to set up window close listener:', error)
+      console.error('Failed to set up event listeners:', error)
     }
     
     // Try to load auto-session after components are ready
