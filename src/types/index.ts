@@ -46,6 +46,7 @@ export interface TabData {
   imageData: ImageData
   isActive: boolean
   order: number // For drag-and-drop reordering
+  isFullyLoaded?: boolean // Tracks if folder context and adjacent images are loaded
 }
 
 /**

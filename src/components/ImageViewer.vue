@@ -221,7 +221,8 @@ const openImage = (imageData: ImageData, folderContext: FolderContext) => {
     title: imageData.name,
     imageData,
     isActive: true,
-    order: getNextTabOrder()
+    order: getNextTabOrder(),
+    isFullyLoaded: true // New tabs are always fully loaded
   }
 
   // Set all existing tabs to inactive
@@ -247,7 +248,7 @@ const openImage = (imageData: ImageData, folderContext: FolderContext) => {
   console.log(`📁 Folder contains ${folderContext.fileEntries.length} images (${folderContext.loadedImages.size} loaded)`)
 }
 
-const switchToTab = (tabId: string) => {
+const switchToTab = async (tabId: string) => {
   const tab = tabs.value.get(tabId)
   if (!tab) return
 
@@ -259,8 +260,16 @@ const switchToTab = (tabId: string) => {
   // Reset zoom and pan when switching tabs
   resetImageView()
 
-  // Load folder context for this tab if needed
-  loadFolderContextForTab(tab)
+  // Load folder context for this tab if needed (lazy loading)
+  if (!tab.isFullyLoaded) {
+    console.log(`🔄 Loading tab on-demand: ${tab.title}`)
+    await loadFolderContextForTab(tab)
+    tab.isFullyLoaded = true
+    console.log(`✅ Tab loaded: ${tab.title}`)
+  } else {
+    // Already loaded, just update current folder images
+    await loadFolderContextForTab(tab)
+  }
 
   // Preload adjacent images in the new tab's context
   nextTick(() => {
@@ -269,6 +278,9 @@ const switchToTab = (tabId: string) => {
       preloadAdjacentImagesLazy(tab.imageData, folderContext)
     }
   })
+
+  // Preload adjacent tabs in background
+  preloadAdjacentTabs(tabId)
 }
 
 const loadFolderContextForTab = async (tab: TabData) => {
@@ -343,6 +355,50 @@ const loadFolderContextForTab = async (tab: TabData) => {
     console.error('Failed to load folder context for tab:', error)
     currentFolderImages.value = [tab.imageData] // Fallback to just the current image
   }
+}
+
+const preloadAdjacentTabs = async (currentTabId: string) => {
+  // Find the current tab in sorted order
+  const sorted = sortedTabs.value
+  const currentIndex = sorted.findIndex(tab => tab.id === currentTabId)
+
+  if (currentIndex === -1) return
+
+  // Determine which tabs to preload (±2 from current)
+  const PRELOAD_TAB_RANGE = 2
+  const startIndex = Math.max(0, currentIndex - PRELOAD_TAB_RANGE)
+  const endIndex = Math.min(sorted.length - 1, currentIndex + PRELOAD_TAB_RANGE)
+
+  const tabsToPreload: TabData[] = []
+  for (let i = startIndex; i <= endIndex; i++) {
+    if (i !== currentIndex) {
+      const tab = sorted[i]
+      // Only preload if not already fully loaded
+      if (tab && !tab.isFullyLoaded) {
+        tabsToPreload.push(tab)
+      }
+    }
+  }
+
+  if (tabsToPreload.length === 0) return
+
+  console.log(`🔄 Preloading ${tabsToPreload.length} adjacent tabs in background...`)
+
+  // Load tabs in parallel (non-blocking)
+  const preloadPromises = tabsToPreload.map(async (tab) => {
+    try {
+      await loadFolderContextForTab(tab)
+      tab.isFullyLoaded = true
+      console.log(`✅ Preloaded tab: ${tab.title}`)
+    } catch (error) {
+      console.warn(`Failed to preload tab: ${tab.title}`, error)
+    }
+  })
+
+  // Don't await - let this happen in background
+  Promise.all(preloadPromises).catch(err => {
+    console.warn('Some tabs failed to preload:', err)
+  })
 }
 
 const closeTab = (tabId: string) => {
@@ -978,10 +1034,14 @@ const restoreFromSession = async (sessionData: SessionData) => {
     // Import invoke here to avoid unused import warning
     const { invoke } = await import('@tauri-apps/api/core')
 
-    // Restore tabs from session
+    let activeTabIdToLoad: string | null = null
+
+    // Phase 1: Restore all tabs with minimal loading (just verify files exist)
     for (const sessionTab of sessionData.tabs) {
       try {
-        // Check if the image file still exists and load it
+        const isActiveTab = sessionTab.id === sessionData.activeTabId
+
+        // Load basic image data for all tabs (lightweight operation)
         const imageData = await invoke<any>('read_image_file', { path: sessionTab.imagePath })
 
         const restoredImageData: ImageData = {
@@ -999,29 +1059,33 @@ const restoreFromSession = async (sessionData: SessionData) => {
           id: sessionTab.id,
           title: restoredImageData.name,
           imageData: restoredImageData,
-          isActive: sessionTab.id === sessionData.activeTabId,
-          order: sessionTab.order
+          isActive: isActiveTab,
+          order: sessionTab.order,
+          isFullyLoaded: false // Mark as not fully loaded yet
         }
 
         tabs.value.set(sessionTab.id, tab)
 
-        // Load folder context for this tab
-        await loadFolderContextForTab(tab)
+        if (isActiveTab) {
+          activeTabIdToLoad = sessionTab.id
+        }
 
-        console.log(`Restored tab: ${restoredImageData.name}`)
+        console.log(`Restored tab (lazy): ${restoredImageData.name}`)
       } catch (error) {
         console.warn(`Failed to restore image: ${sessionTab.imagePath}`, error)
         // Skip this tab if the image no longer exists
       }
     }
 
-    // Set active tab
-    if (sessionData.activeTabId && tabs.value.has(sessionData.activeTabId)) {
-      activeTabId.value = sessionData.activeTabId
-      const activeTab = tabs.value.get(sessionData.activeTabId)
+    // Phase 2: Fully load only the active tab
+    if (activeTabIdToLoad && tabs.value.has(activeTabIdToLoad)) {
+      activeTabId.value = activeTabIdToLoad
+      const activeTab = tabs.value.get(activeTabIdToLoad)
       if (activeTab) {
         activeTab.isActive = true
         await loadFolderContextForTab(activeTab)
+        activeTab.isFullyLoaded = true
+        console.log(`✅ Active tab fully loaded: ${activeTab.title}`)
       }
     } else if (tabs.value.size > 0) {
       // If the original active tab doesn't exist, activate the first available tab
@@ -1030,10 +1094,18 @@ const restoreFromSession = async (sessionData: SessionData) => {
         activeTabId.value = firstTab.id
         firstTab.isActive = true
         await loadFolderContextForTab(firstTab)
+        firstTab.isFullyLoaded = true
+        activeTabIdToLoad = firstTab.id
+        console.log(`✅ First tab fully loaded: ${firstTab.title}`)
       }
     }
 
-    console.log(`Session restored with ${tabs.value.size} tabs`)
+    console.log(`Session restored with ${tabs.value.size} tabs (1 fully loaded)`)
+
+    // Phase 3: Preload adjacent tabs in background (non-blocking)
+    if (activeTabIdToLoad) {
+      preloadAdjacentTabs(activeTabIdToLoad)
+    }
   } catch (error) {
     console.error('Failed to restore session:', error)
     throw error
