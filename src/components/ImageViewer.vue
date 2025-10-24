@@ -312,10 +312,9 @@ const loadFolderContextForTab = async (tab: TabData) => {
       folderPath
     }
 
-    // Load nearby images (±2)
     const selectedIndex = imageFileEntries.findIndex(entry => entry.path === imagePath)
     if (selectedIndex !== -1) {
-      const PRELOAD_RANGE = 2
+      const PRELOAD_RANGE = 3
       const startIndex = Math.max(0, selectedIndex - PRELOAD_RANGE)
       const endIndex = Math.min(imageFileEntries.length - 1, selectedIndex + PRELOAD_RANGE)
 
@@ -681,8 +680,7 @@ const preloadAdjacentImagesLazy = async (currentImage: ImageData, folderContext:
   const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === currentImage.path)
   if (currentIndex === -1) return
 
-  // Preload next 2 and previous 2 images (metadata + browser preload)
-  const PRELOAD_RANGE = 2
+  const PRELOAD_RANGE = 25
   const startIndex = Math.max(0, currentIndex - PRELOAD_RANGE)
   const endIndex = Math.min(folderContext.fileEntries.length - 1, currentIndex + PRELOAD_RANGE)
 
