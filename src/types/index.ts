@@ -29,6 +29,15 @@ export interface FileEntry {
 }
 
 /**
+ * Represents folder context with lazy loading support
+ */
+export interface FolderContext {
+  fileEntries: FileEntry[] // Lightweight list of all files in folder
+  loadedImages: Map<string, ImageData> // Cache of loaded image metadata (keyed by path)
+  folderPath: string
+}
+
+/**
  * Represents a tab containing an image
  */
 export interface TabData {

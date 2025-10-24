@@ -65,16 +65,16 @@
             {{ activeImage.dimensions.width }}×{{ activeImage.dimensions.height }} •
             {{ formatFileSize(activeImage.fileSize) }}
           </span>
-          <span class="folder-position" v-if="currentFolderImages.length > 1">
-            {{ currentImageIndex + 1 }} of {{ currentFolderImages.length }}
+          <span class="folder-position" v-if="currentFolderSize > 1">
+            {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
           </span>
         </div>
         <div class="navigation-controls">
-          <button @click="previousImage" :disabled="currentFolderImages.length <= 1" class="nav-btn"
+          <button @click="previousImage" :disabled="currentFolderSize <= 1" class="nav-btn"
             title="Previous image (←)">
             ← Prev
           </button>
-          <button @click="nextImage" :disabled="currentFolderImages.length <= 1" class="nav-btn" title="Next image (→)">
+          <button @click="nextImage" :disabled="currentFolderSize <= 1" class="nav-btn" title="Next image (→)">
             Next →
           </button>
         </div>
@@ -115,8 +115,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { convertFileSrc } from '@tauri-apps/api/core'
-import type { ImageData, TabData, SessionData } from '../types'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import type { ImageData, TabData, SessionData, FolderContext } from '../types'
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from '../config/keyboardShortcuts'
 import { sessionService } from '../services/sessionService'
 import { memoryManager, ManagedResource } from '../utils/memoryManager'
@@ -132,6 +132,9 @@ const tabs = ref<Map<string, TabData>>(new Map())
 const activeTabId = ref<string | null>(null)
 const currentFolderImages = ref<ImageData[]>([])
 const imageContainer = ref<HTMLElement>()
+
+// Lazy loading state
+const tabFolderContexts = ref<Map<string, FolderContext>>(new Map())
 
 // Performance and memory management
 const managedResources: ManagedResource[] = []
@@ -156,16 +159,54 @@ const activeImage = computed(() => {
 })
 
 const currentImageIndex = computed(() => {
-  if (!activeImage.value) return -1
-  return currentFolderImages.value.findIndex(img => img.path === activeImage.value!.path)
+  if (!activeImage.value || !activeTabId.value) return -1
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  if (!folderContext) return -1
+  return folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
+})
+
+const currentFolderSize = computed(() => {
+  if (!activeTabId.value) return 0
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  return folderContext ? folderContext.fileEntries.length : 0
 })
 
 const sortedTabs = computed(() => {
   return Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
 })
 
+// Helper function to load image metadata on-demand
+const loadImageMetadata = async (filePath: string, folderContext: FolderContext): Promise<ImageData | null> => {
+  // Check if already loaded in cache
+  if (folderContext.loadedImages.has(filePath)) {
+    return folderContext.loadedImages.get(filePath)!
+  }
+
+  try {
+    // Load image metadata from backend
+    const rawData = await invoke<any>('read_image_file', { path: filePath })
+    const imageData: ImageData = {
+      id: rawData.id,
+      name: rawData.name,
+      path: rawData.path,
+      assetUrl: convertFileSrc(rawData.path),
+      dimensions: rawData.dimensions,
+      fileSize: rawData.file_size,
+      lastModified: new Date(rawData.last_modified)
+    }
+
+    // Cache it for future use
+    folderContext.loadedImages.set(filePath, imageData)
+    return imageData
+  } catch (error) {
+    console.error(`Failed to load image metadata for ${filePath}:`, error)
+    return null
+  }
+}
+
+
 // Methods
-const openImage = (imageData: ImageData, folderImages: ImageData[]) => {
+const openImage = (imageData: ImageData, folderContext: FolderContext) => {
   // Create a new tab for this image
   const tabId = `tab-${Date.now()}`
   const tab: TabData = {
@@ -184,16 +225,19 @@ const openImage = (imageData: ImageData, folderImages: ImageData[]) => {
   // Add the new tab
   tabs.value.set(tabId, tab)
   activeTabId.value = tabId
-  currentFolderImages.value = folderImages
 
   // Store folder context for this tab
-  tabFolderContexts.value.set(tabId, folderImages)
+  tabFolderContexts.value.set(tabId, folderContext)
+
+  // Update currentFolderImages with loaded images only
+  currentFolderImages.value = Array.from(folderContext.loadedImages.values())
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   // Preload adjacent images for better performance
-  preloadAdjacentImages(imageData, folderImages)
+  preloadAdjacentImagesLazy(imageData, folderContext)
 
-  console.log(`Opened image: ${imageData.name}`)
-  console.log(`Folder contains ${folderImages.length} images`)
+  console.log(`✨ Opened image: ${imageData.name}`)
+  console.log(`📁 Folder contains ${folderContext.fileEntries.length} images (${folderContext.loadedImages.size} loaded)`)
 }
 
 const switchToTab = (tabId: string) => {
@@ -213,53 +257,82 @@ const switchToTab = (tabId: string) => {
 
   // Preload adjacent images in the new tab's context
   nextTick(() => {
-    const folderImages = tabFolderContexts.value.get(tabId) || []
-    preloadAdjacentImages(tab.imageData, folderImages)
+    const folderContext = tabFolderContexts.value.get(tabId)
+    if (folderContext) {
+      preloadAdjacentImagesLazy(tab.imageData, folderContext)
+    }
   })
 }
-
-// Store folder contexts for each tab
-const tabFolderContexts = ref<Map<string, ImageData[]>>(new Map())
 
 const loadFolderContextForTab = async (tab: TabData) => {
   // Check if we already have folder context for this tab
   if (tabFolderContexts.value.has(tab.id)) {
-    currentFolderImages.value = tabFolderContexts.value.get(tab.id) || []
+    const folderContext = tabFolderContexts.value.get(tab.id)!
+    currentFolderImages.value = Array.from(folderContext.loadedImages.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
     return
   }
 
-  // Load folder context for this tab's image
+  // Load folder context for this tab's image with lazy loading
   try {
     const imagePath = tab.imageData.path
     // Handle both Windows (\) and Unix (/) path separators
     const lastSeparatorIndex = Math.max(imagePath.lastIndexOf('/'), imagePath.lastIndexOf('\\'))
     const folderPath = imagePath.substring(0, lastSeparatorIndex)
 
-    // Import invoke here to avoid the unused import warning
-    const { invoke } = await import('@tauri-apps/api/core')
     const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
 
-    // Filter and transform image files in the folder
-    const imageEntries = folderEntries.filter(entry => entry.is_image)
-    const folderImagePromises = imageEntries.map(async (entry) => {
-      const rawData = await invoke<any>('read_image_file', { path: entry.path })
-      return {
-        id: rawData.id,
-        name: rawData.name,
-        path: rawData.path,
-        assetUrl: convertFileSrc(rawData.path),
-        dimensions: rawData.dimensions,
-        fileSize: rawData.file_size,
-        lastModified: new Date(rawData.last_modified)
-      } as ImageData
-    })
+    // Filter and transform to FileEntry format
+    const imageFileEntries = folderEntries
+      .filter(entry => entry.is_image)
+      .map(entry => ({
+        name: entry.name,
+        path: entry.path,
+        isDirectory: false,
+        isImage: true,
+        size: entry.size,
+        lastModified: entry.last_modified ? new Date(entry.last_modified) : undefined
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
 
-    const folderImages = await Promise.all(folderImagePromises)
-    folderImages.sort((a, b) => a.name.localeCompare(b.name))
+    // Create folder context with the current image already loaded
+    const loadedImages = new Map<string, ImageData>()
+    loadedImages.set(imagePath, tab.imageData)
+
+    const folderContext: FolderContext = {
+      fileEntries: imageFileEntries,
+      loadedImages,
+      folderPath
+    }
+
+    // Load nearby images (±2)
+    const selectedIndex = imageFileEntries.findIndex(entry => entry.path === imagePath)
+    if (selectedIndex !== -1) {
+      const PRELOAD_RANGE = 2
+      const startIndex = Math.max(0, selectedIndex - PRELOAD_RANGE)
+      const endIndex = Math.min(imageFileEntries.length - 1, selectedIndex + PRELOAD_RANGE)
+
+      const adjacentLoadPromises: Promise<void>[] = []
+      for (let i = startIndex; i <= endIndex; i++) {
+        if (i !== selectedIndex) {
+          const entry = imageFileEntries[i]
+          if (entry) {
+            adjacentLoadPromises.push(
+              loadImageMetadata(entry.path, folderContext).then(() => {})
+            )
+          }
+        }
+      }
+
+      await Promise.all(adjacentLoadPromises)
+    }
 
     // Store folder context for this tab
-    tabFolderContexts.value.set(tab.id, folderImages)
-    currentFolderImages.value = folderImages
+    tabFolderContexts.value.set(tab.id, folderContext)
+    currentFolderImages.value = Array.from(folderContext.loadedImages.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    console.log(`📁 Loaded folder context for tab (${folderContext.loadedImages.size}/${imageFileEntries.length} images)`)
   } catch (error) {
     console.error('Failed to load folder context for tab:', error)
     currentFolderImages.value = [tab.imageData] // Fallback to just the current image
@@ -298,26 +371,50 @@ const closeTab = (tabId: string) => {
 }
 
 const nextImage = async () => {
-  if (currentFolderImages.value.length <= 1 || !activeImage.value) return
+  if (!activeTabId.value || !activeImage.value) return
 
-  const currentIndex = currentImageIndex.value
-  const nextIndex = (currentIndex + 1) % currentFolderImages.value.length
-  const nextImageData = currentFolderImages.value[nextIndex]
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  if (!folderContext || folderContext.fileEntries.length <= 1) return
 
+  // Find current image in file entries
+  const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
+  if (currentIndex === -1) return
+
+  // Get next file entry
+  const nextIndex = (currentIndex + 1) % folderContext.fileEntries.length
+  const nextEntry = folderContext.fileEntries[nextIndex]
+  if (!nextEntry) return
+
+  // Load image metadata if not already loaded
+  const nextImageData = await loadImageMetadata(nextEntry.path, folderContext)
   if (nextImageData) {
     await updateCurrentTabImage(nextImageData)
+    // Preload adjacent images for smooth navigation
+    preloadAdjacentImagesLazy(nextImageData, folderContext)
   }
 }
 
 const previousImage = async () => {
-  if (currentFolderImages.value.length <= 1 || !activeImage.value) return
+  if (!activeTabId.value || !activeImage.value) return
 
-  const currentIndex = currentImageIndex.value
-  const prevIndex = currentIndex === 0 ? currentFolderImages.value.length - 1 : currentIndex - 1
-  const prevImageData = currentFolderImages.value[prevIndex]
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  if (!folderContext || folderContext.fileEntries.length <= 1) return
 
+  // Find current image in file entries
+  const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
+  if (currentIndex === -1) return
+
+  // Get previous file entry
+  const prevIndex = currentIndex === 0 ? folderContext.fileEntries.length - 1 : currentIndex - 1
+  const prevEntry = folderContext.fileEntries[prevIndex]
+  if (!prevEntry) return
+
+  // Load image metadata if not already loaded
+  const prevImageData = await loadImageMetadata(prevEntry.path, folderContext)
   if (prevImageData) {
     await updateCurrentTabImage(prevImageData)
+    // Preload adjacent images for smooth navigation
+    preloadAdjacentImagesLazy(prevImageData, folderContext)
   }
 }
 
@@ -344,42 +441,48 @@ const openNewImage = () => {
 
 // Enhanced tab management functions
 const openImageInNewTab = async () => {
-  if (!activeImage.value || currentFolderImages.value.length <= 1) return
+  if (!activeImage.value || !activeTabId.value) return
+
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  if (!folderContext || folderContext.fileEntries.length <= 1) return
 
   const currentIndex = currentImageIndex.value
-  const nextIndex = (currentIndex + 1) % currentFolderImages.value.length
-  const nextImageData = currentFolderImages.value[nextIndex]
+  const nextIndex = (currentIndex + 1) % folderContext.fileEntries.length
+  const nextEntry = folderContext.fileEntries[nextIndex]
+  if (!nextEntry) return
 
-  if (nextImageData) {
-    // Create a new tab for the next image
-    const tabId = `tab-${Date.now()}`
-    const tab: TabData = {
-      id: tabId,
-      title: nextImageData.name,
-      imageData: nextImageData,
-      isActive: true, // Switch to the new tab immediately
-      order: getNextTabOrder()
-    }
+  // Load next image metadata
+  const nextImageData = await loadImageMetadata(nextEntry.path, folderContext)
+  if (!nextImageData) return
 
-    // Set all existing tabs to inactive
-    tabs.value.forEach(existingTab => {
-      existingTab.isActive = false
-    })
-
-    tabs.value.set(tabId, tab)
-    activeTabId.value = tabId
-
-    // Store the same folder context for the new tab
-    if (tabFolderContexts.value.has(activeTabId.value)) {
-      const currentFolderContext = tabFolderContexts.value.get(activeTabId.value)
-      if (currentFolderContext) {
-        tabFolderContexts.value.set(tabId, currentFolderContext)
-        currentFolderImages.value = currentFolderContext
-      }
-    }
-
-    console.log(`Opened ${nextImageData.name} in new tab and switched to it`)
+  // Create a new tab for the next image
+  const tabId = `tab-${Date.now()}`
+  const tab: TabData = {
+    id: tabId,
+    title: nextImageData.name,
+    imageData: nextImageData,
+    isActive: true, // Switch to the new tab immediately
+    order: getNextTabOrder()
   }
+
+  // Set all existing tabs to inactive
+  tabs.value.forEach(existingTab => {
+    existingTab.isActive = false
+  })
+
+  tabs.value.set(tabId, tab)
+  const oldActiveTabId = activeTabId.value
+  activeTabId.value = tabId
+
+  // Store the same folder context for the new tab
+  const currentFolderContext = tabFolderContexts.value.get(oldActiveTabId)
+  if (currentFolderContext) {
+    tabFolderContexts.value.set(tabId, currentFolderContext)
+    currentFolderImages.value = Array.from(currentFolderContext.loadedImages.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  console.log(`Opened ${nextImageData.name} in new tab and switched to it`)
 }
 
 const switchToNextTab = () => {
@@ -538,21 +641,38 @@ const onImageError = () => {
   console.error('Failed to load image')
 }
 
-// Performance optimization methods
-const preloadAdjacentImages = (currentImage: ImageData, folderImages: ImageData[]) => {
-  const currentIndex = folderImages.findIndex(img => img.path === currentImage.path)
+// Performance optimization methods with lazy loading
+const preloadAdjacentImagesLazy = async (currentImage: ImageData, folderContext: FolderContext) => {
+  const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === currentImage.path)
   if (currentIndex === -1) return
 
+  // Preload next 2 and previous 2 images (metadata + browser preload)
+  const PRELOAD_RANGE = 2
+  const startIndex = Math.max(0, currentIndex - PRELOAD_RANGE)
+  const endIndex = Math.min(folderContext.fileEntries.length - 1, currentIndex + PRELOAD_RANGE)
+
+  const preloadPromises: Promise<void>[] = []
   const preloadUrls: string[] = []
 
-  // Preload next 2 and previous 2 images
-  for (let i = Math.max(0, currentIndex - 2); i <= Math.min(folderImages.length - 1, currentIndex + 2); i++) {
-    const image = folderImages[i]
-    if (image && i !== currentIndex && !preloadedImages.value.has(image.assetUrl)) {
-      preloadUrls.push(image.assetUrl)
-      preloadedImages.value.add(image.assetUrl)
+  for (let i = startIndex; i <= endIndex; i++) {
+    if (i !== currentIndex) {
+      const entry = folderContext.fileEntries[i]
+      if (entry) {
+        // Load metadata if not already loaded
+        const loadPromise = loadImageMetadata(entry.path, folderContext).then(imageData => {
+          if (imageData && !preloadedImages.value.has(imageData.assetUrl)) {
+            preloadUrls.push(imageData.assetUrl)
+            preloadedImages.value.add(imageData.assetUrl)
+          }
+        })
+
+        preloadPromises.push(loadPromise)
+      }
     }
   }
+
+  // Wait for metadata to load, then preload actual images
+  await Promise.all(preloadPromises)
 
   if (preloadUrls.length > 0) {
     lazyImageLoader.preloadImages(preloadUrls, 'low')

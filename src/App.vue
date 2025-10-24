@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import ImageViewer from './components/ImageViewer.vue'
 import LoadingIndicator from './components/LoadingIndicator.vue'
-import type { ApplicationState, LoadingState } from './types'
+import type { ApplicationState, LoadingState, FolderContext, ImageData, FileEntry } from './types'
 
 // Application state
 const appState = ref<ApplicationState>({
@@ -169,35 +169,30 @@ const handleOpenImageRequest = async () => {
         operation: 'Loading image...'
       }
       
-      // Read the image data
+      // Read the selected image data
       const imageData = await invoke<any>('read_image_file', { path: selectedPath })
 
-      // Get the folder path and load other images in the same folder
+      // Get the folder path and browse folder contents
       // Handle both Windows (\) and Unix (/) path separators
       const lastSeparatorIndex = Math.max(selectedPath.lastIndexOf('/'), selectedPath.lastIndexOf('\\'))
       const folderPath = selectedPath.substring(0, lastSeparatorIndex)
       const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
-      
-      // Filter and transform image files in the folder
-      const imageEntries = folderEntries.filter(entry => entry.is_image)
-      const folderImagePromises = imageEntries.map(async (entry) => {
-        const rawData = await invoke<any>('read_image_file', { path: entry.path })
-        return {
-          id: rawData.id,
-          name: rawData.name,
-          path: rawData.path,
-          assetUrl: convertFileSrc(rawData.path),
-          dimensions: rawData.dimensions,
-          fileSize: rawData.file_size,
-          lastModified: new Date(rawData.last_modified)
-        }
-      })
-      
-      const folderImages = await Promise.all(folderImagePromises)
-      folderImages.sort((a, b) => a.name.localeCompare(b.name))
-      
-      // Transform the selected image data to match the expected format
-      const transformedImageData = {
+
+      // Filter image files and convert to FileEntry format
+      const imageFileEntries: FileEntry[] = folderEntries
+        .filter(entry => entry.is_image)
+        .map(entry => ({
+          name: entry.name,
+          path: entry.path,
+          isDirectory: false,
+          isImage: true,
+          size: entry.size,
+          lastModified: entry.last_modified ? new Date(entry.last_modified) : undefined
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+
+      // Transform the selected image data
+      const transformedImageData: ImageData = {
         id: imageData.id,
         name: imageData.name,
         path: imageData.path,
@@ -206,12 +201,56 @@ const handleOpenImageRequest = async () => {
         fileSize: imageData.file_size,
         lastModified: new Date(imageData.last_modified)
       }
-      
-      // Open the image in the viewer
-      imageViewer.value?.openImage(transformedImageData, folderImages)
-      
-      console.log(`Opened image: ${transformedImageData.name}`)
-      console.log(`Folder contains ${folderImages.length} images`)
+
+      // Find the index of the selected image in the sorted list
+      const selectedIndex = imageFileEntries.findIndex(entry => entry.path === selectedPath)
+
+      // Lazy loading: Only load nearby images (±2 from selected)
+      const loadedImages = new Map<string, ImageData>()
+      loadedImages.set(selectedPath, transformedImageData) // Add the selected image
+
+      // Load adjacent images for better UX
+      const PRELOAD_RANGE = 2
+      const startIndex = Math.max(0, selectedIndex - PRELOAD_RANGE)
+      const endIndex = Math.min(imageFileEntries.length - 1, selectedIndex + PRELOAD_RANGE)
+
+      const adjacentLoadPromises: Promise<void>[] = []
+      for (let i = startIndex; i <= endIndex; i++) {
+        if (i !== selectedIndex) { // Skip the selected image, already loaded
+          const entry = imageFileEntries[i]
+          if (entry) {
+            adjacentLoadPromises.push(
+              invoke<any>('read_image_file', { path: entry.path }).then(rawData => {
+                loadedImages.set(entry.path, {
+                  id: rawData.id,
+                  name: rawData.name,
+                  path: rawData.path,
+                  assetUrl: convertFileSrc(rawData.path),
+                  dimensions: rawData.dimensions,
+                  fileSize: rawData.file_size,
+                  lastModified: new Date(rawData.last_modified)
+                })
+              })
+            )
+          }
+        }
+      }
+
+      // Load adjacent images in parallel
+      await Promise.all(adjacentLoadPromises)
+
+      // Create folder context
+      const folderContext: FolderContext = {
+        fileEntries: imageFileEntries,
+        loadedImages,
+        folderPath
+      }
+
+      // Open the image in the viewer with lazy loading support
+      imageViewer.value?.openImage(transformedImageData, folderContext)
+
+      console.log(`✨ Opened image: ${transformedImageData.name}`)
+      console.log(`📁 Folder contains ${imageFileEntries.length} images (loaded ${loadedImages.size} initially)`)
     } else {
       console.log('❌ No image selected (user cancelled)')
     }
