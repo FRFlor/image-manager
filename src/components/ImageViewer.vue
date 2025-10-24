@@ -148,8 +148,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import type { ImageData, TabData } from '../types'
+import type { ImageData, TabData, SessionData } from '../types'
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from '../config/keyboardShortcuts'
+import { sessionService } from '../services/sessionService'
 
 // Props and Emits
 const emit = defineEmits<{
@@ -695,6 +696,9 @@ const handleKeyDown = (event: KeyboardEvent) => {
       case 'toggleFitMode':
         toggleFitMode()
         break
+      case 'saveAutoSession':
+        saveAutoSession()
+        break
       default:
         console.warn(`Unknown action: ${matchingShortcut.action}`)
     }
@@ -716,9 +720,139 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', handleMouseUp)
 })
 
+// Session management methods
+const createSessionData = (): SessionData => {
+  const tabArray = sortedTabs.value
+  const sessionTabs = tabArray.map(tab => ({
+    id: tab.id,
+    imagePath: tab.imageData.path,
+    order: tab.order
+  }))
+
+  return {
+    tabs: sessionTabs,
+    activeTabId: activeTabId.value,
+    createdAt: new Date().toISOString()
+  }
+}
+
+const restoreFromSession = async (sessionData: SessionData) => {
+  try {
+    // Clear existing tabs
+    tabs.value.clear()
+    tabFolderContexts.value.clear()
+    activeTabId.value = null
+    currentFolderImages.value = []
+
+    // Import invoke here to avoid unused import warning
+    const { invoke } = await import('@tauri-apps/api/core')
+    
+    // Restore tabs from session
+    for (const sessionTab of sessionData.tabs) {
+      try {
+        // Check if the image file still exists and load it
+        const imageData = await invoke<any>('read_image_file', { path: sessionTab.imagePath })
+        
+        const restoredImageData: ImageData = {
+          id: imageData.id,
+          name: imageData.name,
+          path: imageData.path,
+          assetUrl: imageData.asset_url,
+          dimensions: imageData.dimensions,
+          fileSize: imageData.file_size,
+          lastModified: new Date(imageData.last_modified)
+        }
+
+        // Create tab with restored data
+        const tab: TabData = {
+          id: sessionTab.id,
+          title: restoredImageData.name,
+          imageData: restoredImageData,
+          isActive: sessionTab.id === sessionData.activeTabId,
+          order: sessionTab.order
+        }
+
+        tabs.value.set(sessionTab.id, tab)
+
+        // Load folder context for this tab
+        await loadFolderContextForTab(tab)
+        
+        console.log(`Restored tab: ${restoredImageData.name}`)
+      } catch (error) {
+        console.warn(`Failed to restore image: ${sessionTab.imagePath}`, error)
+        // Skip this tab if the image no longer exists
+      }
+    }
+
+    // Set active tab
+    if (sessionData.activeTabId && tabs.value.has(sessionData.activeTabId)) {
+      activeTabId.value = sessionData.activeTabId
+      const activeTab = tabs.value.get(sessionData.activeTabId)
+      if (activeTab) {
+        activeTab.isActive = true
+        await loadFolderContextForTab(activeTab)
+      }
+    } else if (tabs.value.size > 0) {
+      // If the original active tab doesn't exist, activate the first available tab
+      const firstTab = Array.from(tabs.value.values())[0]
+      if (firstTab) {
+        activeTabId.value = firstTab.id
+        firstTab.isActive = true
+        await loadFolderContextForTab(firstTab)
+      }
+    }
+
+    console.log(`Session restored with ${tabs.value.size} tabs`)
+  } catch (error) {
+    console.error('Failed to restore session:', error)
+    throw error
+  }
+}
+
+const saveAutoSession = async () => {
+  console.log('saveAutoSession called, tabs count:', tabs.value.size)
+  
+  if (tabs.value.size === 0) {
+    console.log('No tabs to save, skipping auto-session save')
+    return
+  }
+
+  try {
+    const sessionData = createSessionData()
+    console.log('Created session data:', sessionData)
+    await sessionService.saveAutoSession(sessionData)
+    console.log('Auto-session saved successfully')
+  } catch (error) {
+    console.error('Failed to save auto-session:', error)
+    // Don't throw here as this shouldn't block the application
+  }
+}
+
+const loadAutoSession = async () => {
+  console.log('loadAutoSession called')
+  try {
+    const sessionData = await sessionService.loadAutoSession()
+    console.log('Loaded session data:', sessionData)
+    if (sessionData) {
+      await restoreFromSession(sessionData)
+      console.log('Session restored successfully')
+      return true
+    }
+    console.log('No session data found')
+    return false
+  } catch (error) {
+    console.error('Failed to load auto-session:', error)
+    return false
+  }
+}
+
 // Expose methods for parent component
 defineExpose({
-  openImage
+  openImage,
+  saveAutoSession,
+  loadAutoSession,
+  createSessionData,
+  restoreFromSession
 })
 </script>
 

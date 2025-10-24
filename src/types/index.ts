@@ -50,7 +50,7 @@ export interface SessionData {
     order: number
   }>
   activeTabId: string | null
-  createdAt: Date
+  createdAt: string // Use string for JSON serialization
 }
 
 /**

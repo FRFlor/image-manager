@@ -36,13 +36,16 @@ pub struct ImageDimensions {
 pub struct SessionData {
     name: Option<String>,
     tabs: Vec<SessionTab>,
+    #[serde(rename = "activeTabId")]
     active_tab_id: Option<String>,
+    #[serde(rename = "createdAt")]
     created_at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SessionTab {
     id: String,
+    #[serde(rename = "imagePath")]
     image_path: String,
     order: u32,
 }
@@ -283,15 +286,60 @@ async fn load_session_dialog() -> Result<Option<SessionData>, String> {
 }
 
 #[tauri::command]
-async fn save_auto_session(_session_data: SessionData) -> Result<(), String> {
-    // Implementation will be added in task 10
+async fn save_auto_session(session_data: SessionData) -> Result<(), String> {
+    use std::fs;
+    use dirs;
+    
+    // Get the application data directory
+    let app_data_dir = dirs::data_dir()
+        .ok_or("Failed to get application data directory")?
+        .join("image-viewer");
+    
+    // Create the directory if it doesn't exist
+    fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+    
+    let session_file = app_data_dir.join("auto-session.json");
+    
+    // Serialize session data to JSON
+    let json_data = serde_json::to_string_pretty(&session_data)
+        .map_err(|e| format!("Failed to serialize session data: {}", e))?;
+    
+    // Write to file
+    fs::write(&session_file, json_data)
+        .map_err(|e| format!("Failed to write session file: {}", e))?;
+    
+    println!("Auto-session saved to: {}", session_file.display());
     Ok(())
 }
 
 #[tauri::command]
 async fn load_auto_session() -> Result<Option<SessionData>, String> {
-    // Implementation will be added in task 10
-    Ok(None)
+    use std::fs;
+    use dirs;
+    
+    // Get the application data directory
+    let app_data_dir = dirs::data_dir()
+        .ok_or("Failed to get application data directory")?
+        .join("image-viewer");
+    
+    let session_file = app_data_dir.join("auto-session.json");
+    
+    // Check if the session file exists
+    if !session_file.exists() {
+        return Ok(None);
+    }
+    
+    // Read the file
+    let json_data = fs::read_to_string(&session_file)
+        .map_err(|e| format!("Failed to read session file: {}", e))?;
+    
+    // Deserialize JSON data
+    let session_data: SessionData = serde_json::from_str(&json_data)
+        .map_err(|e| format!("Failed to parse session data: {}", e))?;
+    
+    println!("Auto-session loaded from: {}", session_file.display());
+    Ok(Some(session_data))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -192,6 +192,20 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     modifiers: { meta: true },
     action: 'toggleFitMode',
     description: 'Toggle between fit-to-window and actual size (Cmd /)'
+  },
+
+  // Session Management (for testing)
+  {
+    key: 's',
+    modifiers: { ctrl: true, shift: true },
+    action: 'saveAutoSession',
+    description: 'Manually save auto-session (for testing)'
+  },
+  {
+    key: 's',
+    modifiers: { meta: true, shift: true },
+    action: 'saveAutoSession',
+    description: 'Manually save auto-session (for testing - Mac)'
   }
 ]
 

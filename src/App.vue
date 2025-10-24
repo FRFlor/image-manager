@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import FolderNavigator from './components/FolderNavigator.vue'
 import ImageViewer from './components/ImageViewer.vue'
@@ -41,9 +41,68 @@ onMounted(async () => {
     const formats = await invoke<string[]>('get_supported_image_types')
     appState.value.supportedFormats = formats
     isLoading.value = false
+    
+    // Set up Tauri window close event listener
+    try {
+      const { listen } = await import('@tauri-apps/api/event')
+      
+      // Listen for window close event
+      await listen('tauri://close-requested', async () => {
+        console.log('Window close requested, saving session...')
+        try {
+          await imageViewer.value?.saveAutoSession()
+          console.log('Session saved successfully')
+        } catch (error) {
+          console.error('Failed to save session on close:', error)
+        }
+      })
+      
+      console.log('Window close listener set up successfully')
+    } catch (error) {
+      console.error('Failed to set up window close listener:', error)
+    }
+    
+    // Try to load auto-session after components are ready
+    setTimeout(async () => {
+      try {
+        console.log('Attempting to load auto-session...')
+        
+        // First switch to image viewer to ensure the component is mounted
+        appState.value.currentView = 'image-viewer'
+        
+        // Wait a bit more for the component to be fully mounted
+        setTimeout(async () => {
+          try {
+            const sessionLoaded = await imageViewer.value?.loadAutoSession()
+            if (sessionLoaded) {
+              console.log('Auto-session loaded and restored')
+            } else {
+              console.log('No auto-session found, switching back to folder browser')
+              appState.value.currentView = 'folder-browser'
+            }
+          } catch (error) {
+            console.error('Failed to load auto-session:', error)
+            appState.value.currentView = 'folder-browser'
+          }
+        }, 200)
+      } catch (error) {
+        console.error('Failed to load auto-session on startup:', error)
+        appState.value.currentView = 'folder-browser'
+      }
+    }, 100)
+    
   } catch (err) {
     error.value = err as string
     isLoading.value = false
+  }
+})
+
+onUnmounted(async () => {
+  // Also save session when component unmounts as a fallback
+  try {
+    await imageViewer.value?.saveAutoSession()
+  } catch (error) {
+    console.error('Failed to save session on unmount:', error)
   }
 })
 </script>
