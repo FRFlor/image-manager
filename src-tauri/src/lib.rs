@@ -170,9 +170,14 @@ async fn read_image_file(path: String) -> Result<ImageData, String> {
     // Read image dimensions
     let dimensions = match ImageReader::open(&image_path) {
         Ok(reader) => {
-            match reader.into_dimensions() {
-                Ok((width, height)) => ImageDimensions { width, height },
-                Err(e) => return Err(format!("Failed to read image dimensions: {}", e)),
+            match reader.with_guessed_format() {
+                Ok(reader_with_format) => {
+                    match reader_with_format.into_dimensions() {
+                        Ok((width, height)) => ImageDimensions { width, height },
+                        Err(e) => return Err(format!("Failed to read image dimensions: {}", e)),
+                    }
+                }
+                Err(e) => return Err(format!("Failed to detect image format: {}", e)),
             }
         }
         Err(e) => return Err(format!("Failed to open image file: {}", e)),

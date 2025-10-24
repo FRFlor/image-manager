@@ -138,18 +138,31 @@ onUnmounted(async () => {
 // Handle open image request from ImageViewer
 const handleOpenImageRequest = async () => {
   try {
-    console.log('Opening image dialog...')
+    console.log('🔍 Opening image dialog...')
+    console.log('🔍 Current loading state:', loadingState.value)
     
     loadingState.value = {
       isLoading: true,
       operation: 'Opening image dialog...'
     }
     
+    // Test Tauri connection first
+    console.log('🔍 Testing Tauri connection...')
+    try {
+      const supportedTypes = await invoke<string[]>('get_supported_image_types')
+      console.log('✅ Tauri connection OK, supported types:', supportedTypes)
+    } catch (testError) {
+      console.error('💥 Tauri connection failed:', testError)
+      throw new Error('Tauri backend not responding')
+    }
+    
     // Open file dialog to select an image
+    console.log('🔍 About to call open_image_dialog...')
     const selectedPath = await invoke<string | null>('open_image_dialog')
+    console.log('🔍 Dialog result:', selectedPath)
     
     if (selectedPath) {
-      console.log('Selected image:', selectedPath)
+      console.log('✅ Selected image:', selectedPath)
       
       loadingState.value = {
         isLoading: true,
@@ -198,10 +211,11 @@ const handleOpenImageRequest = async () => {
       console.log(`Opened image: ${transformedImageData.name}`)
       console.log(`Folder contains ${folderImages.length} images`)
     } else {
-      console.log('No image selected (user cancelled)')
+      console.log('❌ No image selected (user cancelled)')
     }
   } catch (error) {
-    console.error('Failed to open image:', error)
+    console.error('💥 Failed to open image:', error)
+    console.error('💥 Error details:', error)
   } finally {
     loadingState.value = {
       isLoading: false,

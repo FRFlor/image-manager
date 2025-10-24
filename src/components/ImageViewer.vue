@@ -335,6 +335,7 @@ const updateCurrentTabImage = async (newImageData: ImageData) => {
 }
 
 const openNewImage = () => {
+  console.log('🎯 openNewImage called - emitting openImageRequested')
   emit('openImageRequested')
 }
 
@@ -527,11 +528,7 @@ const moveTabLeft = () => {
 
 const onImageLoad = () => {
   console.log('Image loaded successfully')
-
-  // Setup lazy loading for the image element
-  if (imageElement.value && activeImage.value) {
-    lazyImageLoader.observe(imageElement.value, activeImage.value.assetUrl)
-  }
+  // Image is already loaded - no need for lazy loading setup here
 }
 
 const onImageError = () => {
