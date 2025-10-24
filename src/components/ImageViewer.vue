@@ -30,14 +30,53 @@
 
     <!-- Image Display Area -->
     <div class="image-display" v-if="activeImage">
-      <div class="image-container" ref="imageContainer">
+      <div 
+        class="image-container" 
+        ref="imageContainer"
+        @wheel="handleWheel"
+        @mousedown="handleMouseDown"
+        :class="{ 
+          'dragging': isDragging,
+          'pannable': fitMode === 'actual-size'
+        }"
+      >
         <img 
+          ref="imageElement"
           :src="activeImage.assetUrl" 
           :alt="activeImage.name"
           class="main-image"
+          :class="{ 'fit-to-window': fitMode === 'fit-to-window' }"
+          :style="{
+            transform: fitMode === 'actual-size' 
+              ? `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`
+              : 'none'
+          }"
           @load="onImageLoad"
           @error="onImageError"
+          @dragstart.prevent
         />
+      </div>
+
+      <!-- Zoom Controls -->
+      <div class="zoom-controls" v-if="activeImage">
+        <div class="zoom-info">
+          <span class="zoom-level">{{ Math.round(zoomLevel * 100) }}%</span>
+          <span class="fit-mode">{{ fitMode === 'fit-to-window' ? 'Fit' : 'Actual' }}</span>
+        </div>
+        <div class="zoom-buttons">
+          <button @click="zoomOut" class="zoom-btn" :disabled="fitMode === 'fit-to-window'" title="Zoom out (Ctrl/Cmd -)">
+            −
+          </button>
+          <button @click="resetZoom" class="zoom-btn" title="Reset zoom (Ctrl/Cmd 0)">
+            ⌂
+          </button>
+          <button @click="zoomIn" class="zoom-btn" title="Zoom in (Ctrl/Cmd +)">
+            +
+          </button>
+          <button @click="toggleFitMode" class="zoom-btn fit-toggle" title="Toggle fit mode (Ctrl/Cmd /)">
+            {{ fitMode === 'fit-to-window' ? '1:1' : 'Fit' }}
+          </button>
+        </div>
       </div>
 
       <!-- Image Info Bar -->
@@ -123,6 +162,15 @@ const activeTabId = ref<string | null>(null)
 const currentFolderImages = ref<ImageData[]>([])
 const imageContainer = ref<HTMLElement>()
 
+// Zoom and pan state
+const zoomLevel = ref(1)
+const fitMode = ref<'fit-to-window' | 'actual-size'>('fit-to-window')
+const panOffset = ref({ x: 0, y: 0 })
+const isDragging = ref(false)
+const dragStart = ref({ x: 0, y: 0 })
+const imageElement = ref<HTMLImageElement>()
+
+
 
 
 // Computed properties
@@ -178,6 +226,9 @@ const switchToTab = (tabId: string) => {
   tabs.value.forEach(t => { t.isActive = false })
   tab.isActive = true
   activeTabId.value = tabId
+
+  // Reset zoom and pan when switching tabs
+  resetImageView()
 
   // Load folder context for this tab if needed
   loadFolderContextForTab(tab)
@@ -290,6 +341,9 @@ const updateCurrentTabImage = async (newImageData: ImageData) => {
   // Update the tab with the new image data
   activeTab.imageData = newImageData
   activeTab.title = newImageData.name
+  
+  // Reset zoom and pan when changing images
+  resetImageView()
   
   console.log(`Navigated to: ${newImageData.name}`)
 }
@@ -493,6 +547,101 @@ const onImageError = () => {
   console.error('Failed to load image')
 }
 
+// Zoom and pan functionality
+const zoomIn = () => {
+  if (fitMode.value === 'fit-to-window') {
+    fitMode.value = 'actual-size'
+    zoomLevel.value = 1.2 // Start with a slight zoom to make panning useful
+  } else {
+    zoomLevel.value = Math.min(zoomLevel.value * 1.2, 5) // Max zoom 5x
+  }
+  console.log(`Zoomed in to ${(zoomLevel.value * 100).toFixed(0)}%`)
+}
+
+const zoomOut = () => {
+  if (fitMode.value === 'fit-to-window') {
+    return // Can't zoom out in fit mode
+  }
+  
+  zoomLevel.value = Math.max(zoomLevel.value / 1.2, 0.1) // Min zoom 10%
+  
+  // If zoomed out enough, switch back to fit mode
+  if (zoomLevel.value <= 0.5) {
+    fitMode.value = 'fit-to-window'
+    zoomLevel.value = 1
+    panOffset.value = { x: 0, y: 0 }
+  }
+  
+  console.log(`Zoomed out to ${(zoomLevel.value * 100).toFixed(0)}%`)
+}
+
+const resetZoom = () => {
+  fitMode.value = 'fit-to-window'
+  zoomLevel.value = 1
+  panOffset.value = { x: 0, y: 0 }
+  console.log('Reset zoom to fit window')
+}
+
+const toggleFitMode = () => {
+  if (fitMode.value === 'fit-to-window') {
+    fitMode.value = 'actual-size'
+    zoomLevel.value = 1.2 // Start with a slight zoom to make panning useful
+    panOffset.value = { x: 0, y: 0 }
+    console.log('Switched to actual size mode')
+  } else {
+    fitMode.value = 'fit-to-window'
+    zoomLevel.value = 1
+    panOffset.value = { x: 0, y: 0 }
+    console.log('Switched to fit window mode')
+  }
+}
+
+const handleWheel = (event: WheelEvent) => {
+  if (!activeImage.value) return
+  
+  event.preventDefault()
+  
+  if (event.deltaY < 0) {
+    zoomIn()
+  } else {
+    zoomOut()
+  }
+}
+
+const handleMouseDown = (event: MouseEvent) => {
+  if (fitMode.value === 'fit-to-window') return
+  
+  isDragging.value = true
+  dragStart.value = {
+    x: event.clientX - panOffset.value.x,
+    y: event.clientY - panOffset.value.y
+  }
+  
+  event.preventDefault()
+}
+
+const handleMouseMove = (event: MouseEvent) => {
+  if (!isDragging.value) return
+  
+  panOffset.value = {
+    x: event.clientX - dragStart.value.x,
+    y: event.clientY - dragStart.value.y
+  }
+}
+
+const handleMouseUp = () => {
+  isDragging.value = false
+}
+
+// Reset zoom and pan when switching images
+const resetImageView = () => {
+  fitMode.value = 'fit-to-window'
+  zoomLevel.value = 1
+  panOffset.value = { x: 0, y: 0 }
+}
+
+
+
 // Enhanced keyboard navigation using configuration
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
@@ -534,19 +683,37 @@ const handleKeyDown = (event: KeyboardEvent) => {
       case 'moveTabLeft':
         moveTabLeft()
         break
+      case 'zoomIn':
+        zoomIn()
+        break
+      case 'zoomOut':
+        zoomOut()
+        break
+      case 'resetZoom':
+        resetZoom()
+        break
+      case 'toggleFitMode':
+        toggleFitMode()
+        break
       default:
         console.warn(`Unknown action: ${matchingShortcut.action}`)
     }
   }
 }
 
+
+
 // Lifecycle
 onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
+  document.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('mouseup', handleMouseUp)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown)
+  document.removeEventListener('mousemove', handleMouseMove)
+  document.removeEventListener('mouseup', handleMouseUp)
 })
 
 // Expose methods for parent component
@@ -666,6 +833,7 @@ defineExpose({
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  position: relative;
 }
 
 .image-container {
@@ -675,14 +843,29 @@ defineExpose({
   justify-content: center;
   padding: 20px;
   overflow: hidden;
+  position: relative;
+}
+
+.image-container.pannable {
+  cursor: grab;
+}
+
+.image-container.dragging {
+  cursor: grabbing;
 }
 
 .main-image {
+  border-radius: 4px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  transition: transform 0.1s ease-out;
+  user-select: none;
+  pointer-events: none;
+}
+
+.main-image.fit-to-window {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  border-radius: 4px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
 .info-bar {
@@ -780,6 +963,81 @@ defineExpose({
 .open-btn:hover {
   background: #0056b3;
 }
+
+/* Zoom Controls */
+.zoom-controls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(45, 45, 45, 0.9);
+  border: 1px solid #404040;
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  backdrop-filter: blur(10px);
+  z-index: 10;
+}
+
+.zoom-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 50px;
+}
+
+.zoom-level {
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+}
+
+.fit-mode {
+  font-size: 10px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.zoom-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.zoom-btn {
+  width: 32px;
+  height: 32px;
+  background: #404040;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.zoom-btn:hover:not(:disabled) {
+  background: #505050;
+  transform: scale(1.05);
+}
+
+.zoom-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.zoom-btn.fit-toggle {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+
 
 /* Context Menu */
 .context-menu {

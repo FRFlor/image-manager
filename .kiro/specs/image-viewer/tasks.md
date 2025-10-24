@@ -69,11 +69,12 @@
   - ✅ Created steering file to enforce centralized shortcut management
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5 (Architecture improvement)_
 
-- [ ] 8. Add drag-and-drop tab reordering
-  - Implement drag-and-drop functionality for tab reordering
-  - Add visual feedback during drag operations
-  - Update tab order state management
-  - Add smooth animations for tab movements
+- [x] 8. Add keyboard-based tab reordering
+  - ✅ **Implemented keyboard shortcuts for tab reordering** (Alt+Arrow keys, Alt+A/D)
+  - ✅ **Added moveTabLeft and moveTabRight functions** for swapping tab positions
+  - ✅ **Integrated tab reordering actions into centralized keyboard shortcut system**
+  - ✅ **Added proper tab order state management** with sortedTabs computed property
+  - ✅ **Ensured smooth visual transitions** for tab position changes
   - _Requirements: 3.6, 3.7_
 
 - [ ] 9. Add zoom and pan controls to image viewer

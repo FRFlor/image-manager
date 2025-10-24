@@ -128,6 +128,70 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     modifiers: { alt: true },
     action: 'moveTabLeft',
     description: 'Move current tab to the left (gaming style)'
+  },
+
+  // Zoom and Pan Controls (Windows/Linux)
+  {
+    key: '=',
+    modifiers: { ctrl: true },
+    action: 'zoomIn',
+    description: 'Zoom in (Ctrl +)'
+  },
+  {
+    key: '+',
+    modifiers: { ctrl: true },
+    action: 'zoomIn',
+    description: 'Zoom in (Ctrl +)'
+  },
+  {
+    key: '-',
+    modifiers: { ctrl: true },
+    action: 'zoomOut',
+    description: 'Zoom out (Ctrl -)'
+  },
+  {
+    key: '0',
+    modifiers: { ctrl: true },
+    action: 'resetZoom',
+    description: 'Reset zoom to fit window (Ctrl 0)'
+  },
+  {
+    key: '/',
+    modifiers: { ctrl: true },
+    action: 'toggleFitMode',
+    description: 'Toggle between fit-to-window and actual size (Ctrl /)'
+  },
+
+  // Zoom and Pan Controls (Mac)
+  {
+    key: '=',
+    modifiers: { meta: true },
+    action: 'zoomIn',
+    description: 'Zoom in (Cmd +)'
+  },
+  {
+    key: '+',
+    modifiers: { meta: true },
+    action: 'zoomIn',
+    description: 'Zoom in (Cmd +)'
+  },
+  {
+    key: '-',
+    modifiers: { meta: true },
+    action: 'zoomOut',
+    description: 'Zoom out (Cmd -)'
+  },
+  {
+    key: '0',
+    modifiers: { meta: true },
+    action: 'resetZoom',
+    description: 'Reset zoom to fit window (Cmd 0)'
+  },
+  {
+    key: '/',
+    modifiers: { meta: true },
+    action: 'toggleFitMode',
+    description: 'Toggle between fit-to-window and actual size (Cmd /)'
   }
 ]
 
@@ -140,7 +204,7 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: KeyboardShortcut
 
   // Check modifiers
   const modifiers = shortcut.modifiers || {}
-  
+
   return (
     (!!event.ctrlKey === !!modifiers.ctrl) &&
     (!!event.shiftKey === !!modifiers.shift) &&
@@ -157,19 +221,19 @@ export function getShortcutsByAction(action: string): KeyboardShortcut[] {
 // Helper function to format shortcut for display
 export function formatShortcut(shortcut: KeyboardShortcut): string {
   const parts: string[] = []
-  
+
   if (shortcut.modifiers?.ctrl) parts.push('Ctrl')
   if (shortcut.modifiers?.shift) parts.push('Shift')
   if (shortcut.modifiers?.alt) parts.push('Alt')
   if (shortcut.modifiers?.meta) parts.push('Cmd')
-  
+
   // Format key name for display
   let keyName = shortcut.key
   if (keyName.startsWith('Arrow')) {
     keyName = keyName.replace('Arrow', '') + ' Arrow'
   }
-  
+
   parts.push(keyName)
-  
+
   return parts.join(' + ')
 }
