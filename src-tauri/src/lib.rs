@@ -7,8 +7,15 @@ use uuid::Uuid;
 use tauri::{
     Emitter,
     Manager,
+    State,
     menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem},
 };
+use std::sync::{Arc, Mutex};
+
+// Application state to track if we're in the process of exiting
+struct AppState {
+    is_exiting: Arc<Mutex<bool>>,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileEntry {
@@ -431,8 +438,21 @@ async fn load_auto_session() -> Result<Option<SessionData>, String> {
 }
 
 #[tauri::command]
-async fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
+async fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     println!("Exiting application...");
+
+    // Set the exiting flag so window close events won't prevent close
+    *state.is_exiting.lock().unwrap() = true;
+
+    // Close all windows gracefully
+    for (_, window) in app.webview_windows() {
+        let _ = window.close();
+    }
+
+    // Give windows a moment to clean up before forcing exit
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Exit the application
     app.exit(0);
     Ok(())
 }
@@ -441,9 +461,15 @@ async fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize app state
+    let app_state = AppState {
+        is_exiting: Arc::new(Mutex::new(false)),
+    };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             browse_folder,
             read_image_file,
@@ -491,9 +517,20 @@ pub fn run() {
             // --- Handle window close events ---
             // Prevent immediate window close to allow session save on all platforms
             // This ensures consistent behavior across macOS and Windows
+            let app_state: State<AppState> = app.state();
+            let is_exiting_clone = app_state.is_exiting.clone();
+
             for (_, window) in app.webview_windows() {
+                let is_exiting = is_exiting_clone.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        // Check if we're already in the exit process
+                        let exiting = *is_exiting.lock().unwrap();
+                        if exiting {
+                            // Allow the close to proceed during exit
+                            return;
+                        }
+
                         // Prevent default close behavior to allow async session save
                         api.prevent_close();
                         // The tauri://close-requested event will be emitted to the frontend
