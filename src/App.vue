@@ -19,6 +19,7 @@ const loadingState = ref<LoadingState>({
 const imageViewer = ref<InstanceType<typeof ImageViewer>>()
 
 onMounted(async () => {
+  
   try {
     loadingState.value = {
       isLoading: true,
@@ -101,6 +102,8 @@ onMounted(async () => {
               isLoading: false,
               operation: ''
             }
+            
+            console.log('🚀 Application initialized successfully')
           }
         }, 200)
       } catch (error) {
@@ -109,6 +112,7 @@ onMounted(async () => {
           isLoading: false,
           operation: ''
         }
+
       }
     }, 100)
     
@@ -118,6 +122,7 @@ onMounted(async () => {
       isLoading: false,
       operation: ''
     }
+
   }
 })
 
@@ -152,7 +157,7 @@ const handleOpenImageRequest = async () => {
       }
       
       // Read the image data
-      const imageData = await invoke('read_image_file', { path: selectedPath })
+      const imageData = await invoke<any>('read_image_file', { path: selectedPath })
       
       // Get the folder path and load other images in the same folder
       const folderPath = selectedPath.substring(0, selectedPath.lastIndexOf('/'))
@@ -226,6 +231,7 @@ const handleOpenImageRequest = async () => {
           :fullscreen="true"
         />
         
+
 
       </div>
     </main>

@@ -3,20 +3,11 @@
     <!-- Tab Navigation -->
     <div class="tab-bar">
       <div class="tab-container">
-        <div 
-          v-for="tab in sortedTabs" 
-          :key="tab.id"
-          @click="switchToTab(tab.id)"
-          @contextmenu.prevent="showTabContextMenu($event, tab.id)"
-          class="tab"
-          :class="{ active: tab.id === activeTabId }"
-        >
+        <div v-for="tab in sortedTabs" :key="tab.id" @click="switchToTab(tab.id)"
+          @contextmenu.prevent="showTabContextMenu($event, tab.id)" class="tab"
+          :class="{ active: tab.id === activeTabId }">
           <span class="tab-title">{{ tab.title }}</span>
-          <button 
-            @click.stop="closeTab(tab.id)"
-            class="tab-close"
-            :title="`Close ${tab.title}`"
-          >
+          <button @click.stop="closeTab(tab.id)" class="tab-close" :title="`Close ${tab.title}`">
             ×
           </button>
         </div>
@@ -30,32 +21,16 @@
 
     <!-- Image Display Area -->
     <div class="image-display" v-if="activeImage">
-      <div 
-        class="image-container" 
-        ref="imageContainer"
-        @wheel="handleWheel"
-        @mousedown="handleMouseDown"
-        :class="{ 
-          'dragging': isDragging,
-          'pannable': fitMode === 'actual-size'
-        }"
-      >
-        <img 
-          ref="imageElement"
-          :src="activeImage.assetUrl" 
-          :alt="activeImage.name"
-          class="main-image"
-          :class="{ 'fit-to-window': fitMode === 'fit-to-window' }"
-          :style="{
-            transform: fitMode === 'actual-size' 
+      <div class="image-container" ref="imageContainer" @wheel="handleWheel" @mousedown="handleMouseDown" :class="{
+        'dragging': isDragging,
+        'pannable': fitMode === 'actual-size'
+      }">
+        <img ref="imageElement" :src="activeImage.assetUrl" :alt="activeImage.name" class="main-image"
+          :class="{ 'fit-to-window': fitMode === 'fit-to-window' }" :style="{
+            transform: fitMode === 'actual-size'
               ? `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`
               : 'none'
-          }"
-          @load="onImageLoad"
-          @error="onImageError"
-
-          @dragstart.prevent
-        />
+          }" @load="onImageLoad" @error="onImageError" @dragstart.prevent />
 
       </div>
 
@@ -66,7 +41,8 @@
           <span class="fit-mode">{{ fitMode === 'fit-to-window' ? 'Fit' : 'Actual' }}</span>
         </div>
         <div class="zoom-buttons">
-          <button @click="zoomOut" class="zoom-btn" :disabled="fitMode === 'fit-to-window'" title="Zoom out (Ctrl/Cmd -)">
+          <button @click="zoomOut" class="zoom-btn" :disabled="fitMode === 'fit-to-window'"
+            title="Zoom out (Ctrl/Cmd -)">
             −
           </button>
           <button @click="resetZoom" class="zoom-btn" title="Reset zoom (Ctrl/Cmd 0)">
@@ -86,7 +62,7 @@
         <div class="image-info">
           <span class="image-name">{{ activeImage.name }}</span>
           <span class="image-details">
-            {{ activeImage.dimensions.width }}×{{ activeImage.dimensions.height }} • 
+            {{ activeImage.dimensions.width }}×{{ activeImage.dimensions.height }} •
             {{ formatFileSize(activeImage.fileSize) }}
           </span>
           <span class="folder-position" v-if="currentFolderImages.length > 1">
@@ -94,20 +70,11 @@
           </span>
         </div>
         <div class="navigation-controls">
-          <button 
-            @click="previousImage" 
-            :disabled="currentFolderImages.length <= 1"
-            class="nav-btn"
-            title="Previous image (←)"
-          >
+          <button @click="previousImage" :disabled="currentFolderImages.length <= 1" class="nav-btn"
+            title="Previous image (←)">
             ← Prev
           </button>
-          <button 
-            @click="nextImage" 
-            :disabled="currentFolderImages.length <= 1"
-            class="nav-btn"
-            title="Next image (→)"
-          >
+          <button @click="nextImage" :disabled="currentFolderImages.length <= 1" class="nav-btn" title="Next image (→)">
             Next →
           </button>
         </div>
@@ -126,11 +93,8 @@
     </div>
 
     <!-- Tab Context Menu -->
-    <div 
-      v-if="contextMenuVisible" 
-      class="context-menu"
-      :style="{ left: contextMenuPosition.x + 'px', top: contextMenuPosition.y + 'px' }"
-    >
+    <div v-if="contextMenuVisible" class="context-menu"
+      :style="{ left: contextMenuPosition.x + 'px', top: contextMenuPosition.y + 'px' }">
       <div class="context-menu-item" @click="closeTab(contextMenuTabId!)">
         Close Tab
       </div>
@@ -150,10 +114,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { ImageData, TabData, SessionData } from '../types'
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from '../config/keyboardShortcuts'
 import { sessionService } from '../services/sessionService'
+import { memoryManager, ManagedResource } from '../utils/memoryManager'
+import { lazyImageLoader } from '../utils/lazyLoader'
 
 // Props and Emits
 const emit = defineEmits<{
@@ -166,7 +132,9 @@ const activeTabId = ref<string | null>(null)
 const currentFolderImages = ref<ImageData[]>([])
 const imageContainer = ref<HTMLElement>()
 
-
+// Performance and memory management
+const managedResources: ManagedResource[] = []
+const preloadedImages = ref<Set<string>>(new Set())
 
 // Zoom and pan state
 const zoomLevel = ref(1)
@@ -216,9 +184,12 @@ const openImage = (imageData: ImageData, folderImages: ImageData[]) => {
   tabs.value.set(tabId, tab)
   activeTabId.value = tabId
   currentFolderImages.value = folderImages
-  
+
   // Store folder context for this tab
   tabFolderContexts.value.set(tabId, folderImages)
+
+  // Preload adjacent images for better performance
+  preloadAdjacentImages(imageData, folderImages)
 
   console.log(`Opened image: ${imageData.name}`)
   console.log(`Folder contains ${folderImages.length} images`)
@@ -238,6 +209,12 @@ const switchToTab = (tabId: string) => {
 
   // Load folder context for this tab if needed
   loadFolderContextForTab(tab)
+
+  // Preload adjacent images in the new tab's context
+  nextTick(() => {
+    const folderImages = tabFolderContexts.value.get(tabId) || []
+    preloadAdjacentImages(tab.imageData, folderImages)
+  })
 }
 
 // Store folder contexts for each tab
@@ -254,11 +231,11 @@ const loadFolderContextForTab = async (tab: TabData) => {
   try {
     const imagePath = tab.imageData.path
     const folderPath = imagePath.substring(0, imagePath.lastIndexOf('/'))
-    
+
     // Import invoke here to avoid the unused import warning
     const { invoke } = await import('@tauri-apps/api/core')
     const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
-    
+
     // Filter and transform image files in the folder
     const imageEntries = folderEntries.filter(entry => entry.is_image)
     const folderImagePromises = imageEntries.map(async (entry) => {
@@ -273,10 +250,10 @@ const loadFolderContextForTab = async (tab: TabData) => {
         lastModified: new Date(rawData.last_modified)
       } as ImageData
     })
-    
+
     const folderImages = await Promise.all(folderImagePromises)
     folderImages.sort((a, b) => a.name.localeCompare(b.name))
-    
+
     // Store folder context for this tab
     tabFolderContexts.value.set(tab.id, folderImages)
     currentFolderImages.value = folderImages
@@ -289,11 +266,14 @@ const loadFolderContextForTab = async (tab: TabData) => {
 const closeTab = (tabId: string) => {
   const tabToClose = tabs.value.get(tabId)
   if (!tabToClose) return
-  
+
+  // Clean up resources for this tab
+  cleanupTabResources(tabId)
+
   // Clean up folder context for this tab
   tabFolderContexts.value.delete(tabId)
   tabs.value.delete(tabId)
-  
+
   if (activeTabId.value === tabId) {
     // Find another tab to activate - prefer the tab to the right, then left
     const remainingTabs = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
@@ -316,11 +296,11 @@ const closeTab = (tabId: string) => {
 
 const nextImage = async () => {
   if (currentFolderImages.value.length <= 1 || !activeImage.value) return
-  
+
   const currentIndex = currentImageIndex.value
   const nextIndex = (currentIndex + 1) % currentFolderImages.value.length
   const nextImageData = currentFolderImages.value[nextIndex]
-  
+
   if (nextImageData) {
     await updateCurrentTabImage(nextImageData)
   }
@@ -328,11 +308,11 @@ const nextImage = async () => {
 
 const previousImage = async () => {
   if (currentFolderImages.value.length <= 1 || !activeImage.value) return
-  
+
   const currentIndex = currentImageIndex.value
   const prevIndex = currentIndex === 0 ? currentFolderImages.value.length - 1 : currentIndex - 1
   const prevImageData = currentFolderImages.value[prevIndex]
-  
+
   if (prevImageData) {
     await updateCurrentTabImage(prevImageData)
   }
@@ -340,17 +320,17 @@ const previousImage = async () => {
 
 const updateCurrentTabImage = async (newImageData: ImageData) => {
   if (!activeTabId.value) return
-  
+
   const activeTab = tabs.value.get(activeTabId.value)
   if (!activeTab) return
-  
+
   // Update the tab with the new image data
   activeTab.imageData = newImageData
   activeTab.title = newImageData.name
-  
+
   // Reset zoom and pan when changing images
   resetImageView()
-  
+
   console.log(`Navigated to: ${newImageData.name}`)
 }
 
@@ -361,11 +341,11 @@ const openNewImage = () => {
 // Enhanced tab management functions
 const openImageInNewTab = async () => {
   if (!activeImage.value || currentFolderImages.value.length <= 1) return
-  
+
   const currentIndex = currentImageIndex.value
   const nextIndex = (currentIndex + 1) % currentFolderImages.value.length
   const nextImageData = currentFolderImages.value[nextIndex]
-  
+
   if (nextImageData) {
     // Create a new tab for the next image
     const tabId = `tab-${Date.now()}`
@@ -376,15 +356,15 @@ const openImageInNewTab = async () => {
       isActive: true, // Switch to the new tab immediately
       order: getNextTabOrder()
     }
-    
+
     // Set all existing tabs to inactive
     tabs.value.forEach(existingTab => {
       existingTab.isActive = false
     })
-    
+
     tabs.value.set(tabId, tab)
     activeTabId.value = tabId
-    
+
     // Store the same folder context for the new tab
     if (tabFolderContexts.value.has(activeTabId.value)) {
       const currentFolderContext = tabFolderContexts.value.get(activeTabId.value)
@@ -393,7 +373,7 @@ const openImageInNewTab = async () => {
         currentFolderImages.value = currentFolderContext
       }
     }
-    
+
     console.log(`Opened ${nextImageData.name} in new tab and switched to it`)
   }
 }
@@ -401,7 +381,7 @@ const openImageInNewTab = async () => {
 const switchToNextTab = () => {
   const tabArray = sortedTabs.value
   if (tabArray.length <= 1) return
-  
+
   const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
   const nextIndex = (currentIndex + 1) % tabArray.length
   const nextTab = tabArray[nextIndex]
@@ -413,7 +393,7 @@ const switchToNextTab = () => {
 const switchToPreviousTab = () => {
   const tabArray = sortedTabs.value
   if (tabArray.length <= 1) return
-  
+
   const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
   const prevIndex = currentIndex === 0 ? tabArray.length - 1 : currentIndex - 1
   const prevTab = tabArray[prevIndex]
@@ -442,13 +422,13 @@ const showTabContextMenu = (event: MouseEvent, tabId: string) => {
   contextMenuPosition.value = { x: event.clientX, y: event.clientY }
   contextMenuTabId.value = tabId
   contextMenuVisible.value = true
-  
+
   // Close context menu when clicking elsewhere
   const closeContextMenu = () => {
     contextMenuVisible.value = false
     document.removeEventListener('click', closeContextMenu)
   }
-  
+
   setTimeout(() => {
     document.addEventListener('click', closeContextMenu)
   }, 0)
@@ -456,7 +436,7 @@ const showTabContextMenu = (event: MouseEvent, tabId: string) => {
 
 const closeOtherTabs = () => {
   if (!contextMenuTabId.value) return
-  
+
   const tabsToClose = Array.from(tabs.value.keys()).filter(id => id !== contextMenuTabId.value)
   tabsToClose.forEach(tabId => closeTab(tabId))
   contextMenuVisible.value = false
@@ -464,10 +444,10 @@ const closeOtherTabs = () => {
 
 const closeTabsToRight = () => {
   if (!contextMenuTabId.value) return
-  
+
   const tabArray = sortedTabs.value
   const contextTabIndex = tabArray.findIndex(tab => tab.id === contextMenuTabId.value)
-  
+
   if (contextTabIndex >= 0) {
     const tabsToClose = tabArray.slice(contextTabIndex + 1)
     tabsToClose.forEach(tab => closeTab(tab.id))
@@ -477,10 +457,10 @@ const closeTabsToRight = () => {
 
 const closeTabsToLeft = () => {
   if (!contextMenuTabId.value) return
-  
+
   const tabArray = sortedTabs.value
   const contextTabIndex = tabArray.findIndex(tab => tab.id === contextMenuTabId.value)
-  
+
   if (contextTabIndex >= 0) {
     const tabsToClose = tabArray.slice(0, contextTabIndex)
     tabsToClose.forEach(tab => closeTab(tab.id))
@@ -505,52 +485,114 @@ const getNextTabOrder = (): number => {
 
 const moveTabRight = () => {
   if (!activeTabId.value) return
-  
+
   const tabArray = sortedTabs.value
   const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
-  
+
   if (currentIndex === -1 || currentIndex >= tabArray.length - 1) return
-  
+
   // Swap with the tab to the right
   const currentTab = tabArray[currentIndex]
   const rightTab = tabArray[currentIndex + 1]
-  
+
   if (currentTab && rightTab) {
     const tempOrder = currentTab.order
     currentTab.order = rightTab.order
     rightTab.order = tempOrder
-    
+
     console.log(`Moved tab "${currentTab.title}" to the right`)
   }
 }
 
 const moveTabLeft = () => {
   if (!activeTabId.value) return
-  
+
   const tabArray = sortedTabs.value
   const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
-  
+
   if (currentIndex === -1 || currentIndex <= 0) return
-  
+
   // Swap with the tab to the left
   const currentTab = tabArray[currentIndex]
   const leftTab = tabArray[currentIndex - 1]
-  
+
   if (currentTab && leftTab) {
     const tempOrder = currentTab.order
     currentTab.order = leftTab.order
     leftTab.order = tempOrder
-    
+
     console.log(`Moved tab "${currentTab.title}" to the left`)
   }
 }
 
 const onImageLoad = () => {
   console.log('Image loaded successfully')
+
+  // Setup lazy loading for the image element
+  if (imageElement.value && activeImage.value) {
+    lazyImageLoader.observe(imageElement.value, activeImage.value.assetUrl)
+  }
 }
 
 const onImageError = () => {
   console.error('Failed to load image')
+}
+
+// Performance optimization methods
+const preloadAdjacentImages = (currentImage: ImageData, folderImages: ImageData[]) => {
+  const currentIndex = folderImages.findIndex(img => img.path === currentImage.path)
+  if (currentIndex === -1) return
+
+  const preloadUrls: string[] = []
+
+  // Preload next 2 and previous 2 images
+  for (let i = Math.max(0, currentIndex - 2); i <= Math.min(folderImages.length - 1, currentIndex + 2); i++) {
+    const image = folderImages[i]
+    if (image && i !== currentIndex && !preloadedImages.value.has(image.assetUrl)) {
+      preloadUrls.push(image.assetUrl)
+      preloadedImages.value.add(image.assetUrl)
+    }
+  }
+
+  if (preloadUrls.length > 0) {
+    lazyImageLoader.preloadImages(preloadUrls, 'low')
+  }
+}
+
+const cleanupTabResources = (tabId: string) => {
+  const tab = tabs.value.get(tabId)
+  if (!tab) return
+
+  // Remove from preloaded images
+  preloadedImages.value.delete(tab.imageData.assetUrl)
+
+  // Remove from memory manager cache
+  memoryManager.removeCachedImage(tab.imageData.assetUrl)
+
+  console.log(`Cleaned up resources for tab: ${tab.title}`)
+}
+
+const optimizeMemoryUsage = () => {
+  // Check if memory usage is high
+  if (memoryManager.isMemoryUsageHigh()) {
+    console.warn('High memory usage detected, performing cleanup')
+
+    // Clear preloaded images that aren't currently visible
+    const visibleUrls = new Set<string>()
+    tabs.value.forEach(tab => {
+      visibleUrls.add(tab.imageData.assetUrl)
+    })
+
+    for (const url of preloadedImages.value) {
+      if (!visibleUrls.has(url)) {
+        memoryManager.removeCachedImage(url)
+        preloadedImages.value.delete(url)
+      }
+    }
+
+    // Force garbage collection if available
+    memoryManager.forceGarbageCollection()
+  }
 }
 
 // Zoom and pan functionality
@@ -568,16 +610,16 @@ const zoomOut = () => {
   if (fitMode.value === 'fit-to-window') {
     return // Can't zoom out in fit mode
   }
-  
+
   zoomLevel.value = Math.max(zoomLevel.value / 1.2, 0.1) // Min zoom 10%
-  
+
   // If zoomed out enough, switch back to fit mode
   if (zoomLevel.value <= 0.5) {
     fitMode.value = 'fit-to-window'
     zoomLevel.value = 1
     panOffset.value = { x: 0, y: 0 }
   }
-  
+
   console.log(`Zoomed out to ${(zoomLevel.value * 100).toFixed(0)}%`)
 }
 
@@ -604,9 +646,9 @@ const toggleFitMode = () => {
 
 const handleWheel = (event: WheelEvent) => {
   if (!activeImage.value) return
-  
+
   event.preventDefault()
-  
+
   if (event.deltaY < 0) {
     zoomIn()
   } else {
@@ -616,19 +658,19 @@ const handleWheel = (event: WheelEvent) => {
 
 const handleMouseDown = (event: MouseEvent) => {
   if (fitMode.value === 'fit-to-window') return
-  
+
   isDragging.value = true
   dragStart.value = {
     x: event.clientX - panOffset.value.x,
     y: event.clientY - panOffset.value.y
   }
-  
+
   event.preventDefault()
 }
 
 const handleMouseMove = (event: MouseEvent) => {
   if (!isDragging.value) return
-  
+
   panOffset.value = {
     x: event.clientX - dragStart.value.x,
     y: event.clientY - dragStart.value.y
@@ -658,10 +700,10 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
   // Find matching shortcut from configuration
   const matchingShortcut = KEYBOARD_SHORTCUTS.find(shortcut => matchesShortcut(event, shortcut))
-  
+
   if (matchingShortcut) {
     event.preventDefault()
-    
+
     // Execute the action based on the shortcut configuration
     switch (matchingShortcut.action) {
       case 'nextImage':
@@ -719,12 +761,28 @@ onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
+
+  // Setup memory optimization interval
+  const memoryOptimizationResource = new ManagedResource(() => {
+    clearInterval(memoryOptimizationInterval)
+  })
+  managedResources.push(memoryOptimizationResource)
+
+  const memoryOptimizationInterval = setInterval(optimizeMemoryUsage, 60000) // Every minute
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown)
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
+
+  // Cleanup all managed resources
+  managedResources.forEach(resource => resource.cleanup())
+  managedResources.length = 0
+
+  // Clear all cached data
+  preloadedImages.value.clear()
+  tabFolderContexts.value.clear()
 })
 
 // Session management methods
@@ -753,13 +811,13 @@ const restoreFromSession = async (sessionData: SessionData) => {
 
     // Import invoke here to avoid unused import warning
     const { invoke } = await import('@tauri-apps/api/core')
-    
+
     // Restore tabs from session
     for (const sessionTab of sessionData.tabs) {
       try {
         // Check if the image file still exists and load it
         const imageData = await invoke<any>('read_image_file', { path: sessionTab.imagePath })
-        
+
         const restoredImageData: ImageData = {
           id: imageData.id,
           name: imageData.name,
@@ -783,7 +841,7 @@ const restoreFromSession = async (sessionData: SessionData) => {
 
         // Load folder context for this tab
         await loadFolderContextForTab(tab)
-        
+
         console.log(`Restored tab: ${restoredImageData.name}`)
       } catch (error) {
         console.warn(`Failed to restore image: ${sessionTab.imagePath}`, error)
@@ -818,7 +876,7 @@ const restoreFromSession = async (sessionData: SessionData) => {
 
 const saveAutoSession = async () => {
   console.log('saveAutoSession called, tabs count:', tabs.value.size)
-  
+
   if (tabs.value.size === 0) {
     console.log('No tabs to save, skipping auto-session save')
     return
@@ -855,7 +913,7 @@ const loadAutoSession = async () => {
 
 const saveSessionDialog = async () => {
   console.log('saveSessionDialog called')
-  
+
   if (tabs.value.size === 0) {
     console.log('No tabs to save')
     return false
@@ -1265,15 +1323,15 @@ defineExpose({
     gap: 12px;
     align-items: stretch;
   }
-  
+
   .image-info {
     text-align: center;
   }
-  
+
   .navigation-controls {
     justify-content: center;
   }
-  
+
   .tab {
     min-width: 100px;
     max-width: 150px;
