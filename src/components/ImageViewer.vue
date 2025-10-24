@@ -4,7 +4,7 @@
     <div class="tab-bar">
       <div class="tab-container">
         <div 
-          v-for="tab in Array.from(tabs.values())" 
+          v-for="tab in sortedTabs" 
           :key="tab.id"
           @click="switchToTab(tab.id)"
           @contextmenu.prevent="showTabContextMenu($event, tab.id)"
@@ -123,6 +123,8 @@ const activeTabId = ref<string | null>(null)
 const currentFolderImages = ref<ImageData[]>([])
 const imageContainer = ref<HTMLElement>()
 
+
+
 // Computed properties
 const activeImage = computed(() => {
   if (!activeTabId.value) return null
@@ -135,6 +137,10 @@ const currentImageIndex = computed(() => {
   return currentFolderImages.value.findIndex(img => img.path === activeImage.value!.path)
 })
 
+const sortedTabs = computed(() => {
+  return Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+})
+
 // Methods
 const openImage = (imageData: ImageData, folderImages: ImageData[]) => {
   // Create a new tab for this image
@@ -144,7 +150,7 @@ const openImage = (imageData: ImageData, folderImages: ImageData[]) => {
     title: imageData.name,
     imageData,
     isActive: true,
-    order: tabs.value.size
+    order: getNextTabOrder()
   }
 
   // Set all existing tabs to inactive
@@ -241,7 +247,9 @@ const closeTab = (tabId: string) => {
       if (!newActiveTab) {
         newActiveTab = remainingTabs[remainingTabs.length - 1]
       }
-      switchToTab(newActiveTab.id)
+      if (newActiveTab) {
+        switchToTab(newActiveTab.id)
+      }
     } else {
       activeTabId.value = null
       currentFolderImages.value = []
@@ -306,7 +314,7 @@ const openImageInNewTab = async () => {
       title: nextImageData.name,
       imageData: nextImageData,
       isActive: true, // Switch to the new tab immediately
-      order: tabs.value.size
+      order: getNextTabOrder()
     }
     
     // Set all existing tabs to inactive
@@ -331,21 +339,27 @@ const openImageInNewTab = async () => {
 }
 
 const switchToNextTab = () => {
-  const tabArray = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+  const tabArray = sortedTabs.value
   if (tabArray.length <= 1) return
   
   const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
   const nextIndex = (currentIndex + 1) % tabArray.length
-  switchToTab(tabArray[nextIndex].id)
+  const nextTab = tabArray[nextIndex]
+  if (nextTab) {
+    switchToTab(nextTab.id)
+  }
 }
 
 const switchToPreviousTab = () => {
-  const tabArray = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+  const tabArray = sortedTabs.value
   if (tabArray.length <= 1) return
   
   const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
   const prevIndex = currentIndex === 0 ? tabArray.length - 1 : currentIndex - 1
-  switchToTab(tabArray[prevIndex].id)
+  const prevTab = tabArray[prevIndex]
+  if (prevTab) {
+    switchToTab(prevTab.id)
+  }
 }
 
 const createNewTab = () => {
@@ -391,7 +405,7 @@ const closeOtherTabs = () => {
 const closeTabsToRight = () => {
   if (!contextMenuTabId.value) return
   
-  const tabArray = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+  const tabArray = sortedTabs.value
   const contextTabIndex = tabArray.findIndex(tab => tab.id === contextMenuTabId.value)
   
   if (contextTabIndex >= 0) {
@@ -404,7 +418,7 @@ const closeTabsToRight = () => {
 const closeTabsToLeft = () => {
   if (!contextMenuTabId.value) return
   
-  const tabArray = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+  const tabArray = sortedTabs.value
   const contextTabIndex = tabArray.findIndex(tab => tab.id === contextMenuTabId.value)
   
   if (contextTabIndex >= 0) {
@@ -420,6 +434,55 @@ const formatFileSize = (bytes: number): string => {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+// Tab reordering functionality
+const getNextTabOrder = (): number => {
+  if (tabs.value.size === 0) return 0
+  const maxOrder = Math.max(...Array.from(tabs.value.values()).map(tab => tab.order))
+  return maxOrder + 1
+}
+
+const moveTabRight = () => {
+  if (!activeTabId.value) return
+  
+  const tabArray = sortedTabs.value
+  const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
+  
+  if (currentIndex === -1 || currentIndex >= tabArray.length - 1) return
+  
+  // Swap with the tab to the right
+  const currentTab = tabArray[currentIndex]
+  const rightTab = tabArray[currentIndex + 1]
+  
+  if (currentTab && rightTab) {
+    const tempOrder = currentTab.order
+    currentTab.order = rightTab.order
+    rightTab.order = tempOrder
+    
+    console.log(`Moved tab "${currentTab.title}" to the right`)
+  }
+}
+
+const moveTabLeft = () => {
+  if (!activeTabId.value) return
+  
+  const tabArray = sortedTabs.value
+  const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
+  
+  if (currentIndex === -1 || currentIndex <= 0) return
+  
+  // Swap with the tab to the left
+  const currentTab = tabArray[currentIndex]
+  const leftTab = tabArray[currentIndex - 1]
+  
+  if (currentTab && leftTab) {
+    const tempOrder = currentTab.order
+    currentTab.order = leftTab.order
+    leftTab.order = tempOrder
+    
+    console.log(`Moved tab "${currentTab.title}" to the left`)
+  }
 }
 
 const onImageLoad = () => {
@@ -464,6 +527,12 @@ const handleKeyDown = (event: KeyboardEvent) => {
         break
       case 'closeCurrentTab':
         closeCurrentTab()
+        break
+      case 'moveTabRight':
+        moveTabRight()
+        break
+      case 'moveTabLeft':
+        moveTabLeft()
         break
       default:
         console.warn(`Unknown action: ${matchingShortcut.action}`)
@@ -522,10 +591,11 @@ defineExpose({
   background: #2d2d2d;
   border-right: 1px solid #404040;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
   min-width: 120px;
   max-width: 200px;
   white-space: nowrap;
+  user-select: none;
 }
 
 .tab:hover {
@@ -536,6 +606,8 @@ defineExpose({
   background: #1a1a1a;
   border-bottom: 2px solid #007bff;
 }
+
+
 
 .tab-title {
   flex: 1;

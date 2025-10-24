@@ -102,6 +102,32 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     key: 'Escape',
     action: 'closeCurrentTab',
     description: 'Close current tab'
+  },
+
+  // Tab Reordering
+  {
+    key: 'ArrowRight',
+    modifiers: { alt: true },
+    action: 'moveTabRight',
+    description: 'Move current tab to the right'
+  },
+  {
+    key: 'ArrowLeft',
+    modifiers: { alt: true },
+    action: 'moveTabLeft',
+    description: 'Move current tab to the left'
+  },
+  {
+    key: 'd',
+    modifiers: { alt: true },
+    action: 'moveTabRight',
+    description: 'Move current tab to the right (gaming style)'
+  },
+  {
+    key: 'a',
+    modifiers: { alt: true },
+    action: 'moveTabLeft',
+    description: 'Move current tab to the left (gaming style)'
   }
 ]
 

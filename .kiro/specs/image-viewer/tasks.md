@@ -38,16 +38,18 @@
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.8, 3.9, 3.10, 3.11_
 
 - [x] 6. Enhance tab management functionality
-  - **Add Enter key shortcut to open new image in new tab** (while staying in current viewer)
-  - **Fix Ctrl+O to open new tab instead of returning to file picker**
-  - **Add Ctrl+Tab to switch to tab on the right of current tab**
-  - **Add Ctrl+Shift+Tab to switch to tab on the left of current tab**
-  - Implement proper tab state persistence across navigation (arrow key navigation should not affect other tabs)
-  - Add keyboard shortcuts for tab management (Ctrl+T for new tab, Ctrl+W to close tab)
-  - Improve tab closing behavior and active tab selection
-  - Ensure tab names show only image filename (not full path) ✅ Already implemented
-  - Add tab context menu (right-click options)
-  - Ensure multiple tabs can have different folder contexts
+  - ✅ **Add Enter key shortcut to open new image in new tab** (while staying in current viewer)
+  - ✅ **Fix Ctrl+O to open new tab instead of returning to file picker**
+  - ✅ **Add Ctrl+Tab to switch to tab on the right of current tab**
+  - ✅ **Add Ctrl+Shift+Tab to switch to tab on the left of current tab**
+  - ✅ Implement proper tab state persistence across navigation (arrow key navigation should not affect other tabs)
+  - ✅ Add keyboard shortcuts for tab management (Ctrl+T for new tab, Ctrl+W to close tab)
+  - ✅ Improve tab closing behavior and active tab selection
+  - ✅ Ensure tab names show only image filename (not full path)
+  - ✅ Add tab context menu (right-click options)
+  - ✅ Ensure multiple tabs can have different folder contexts
+  - ✅ **Add gaming-style navigation (A/D for images, Shift+A/D for tabs)**
+  - ✅ **Add Shift+Arrow keys for tab switching**
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
 - [x] 7. Integrate image loading with Tauri asset protocol
@@ -56,6 +58,16 @@
   - ✅ Added error handling for corrupted or unsupported image files
   - ✅ Created loading states in components
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+
+- [x] 7.5. Implement centralized keyboard shortcuts configuration system
+  - ✅ Created `src/config/keyboardShortcuts.ts` as single source of truth for all shortcuts
+  - ✅ Built TypeScript interfaces for keyboard shortcut definitions
+  - ✅ Implemented `matchesShortcut` helper function for event matching
+  - ✅ Created utility functions for shortcut formatting and categorization
+  - ✅ Refactored ImageViewer component to use centralized configuration
+  - ✅ Added comprehensive documentation and README
+  - ✅ Created steering file to enforce centralized shortcut management
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5 (Architecture improvement)_
 
 - [ ] 8. Add drag-and-drop tab reordering
   - Implement drag-and-drop functionality for tab reordering
@@ -66,7 +78,7 @@
 
 - [ ] 9. Add zoom and pan controls to image viewer
   - Implement zoom in/out functionality with mouse wheel
-  - Create keyboard shortcuts for zoom (Ctrl/Cmd +, -, 0)
+  - **Add zoom keyboard shortcuts to centralized configuration** (Ctrl/Cmd +, -, 0)
   - Add toggle between fit-to-window and actual size modes
   - Implement pan functionality for zoomed images
   - Add zoom level indicator and reset functionality
