@@ -53,8 +53,10 @@
           }"
           @load="onImageLoad"
           @error="onImageError"
+
           @dragstart.prevent
         />
+
       </div>
 
       <!-- Zoom Controls -->
@@ -143,6 +145,7 @@
         Close Tabs to Right
       </div>
     </div>
+
   </div>
 </template>
 
@@ -162,6 +165,8 @@ const tabs = ref<Map<string, TabData>>(new Map())
 const activeTabId = ref<string | null>(null)
 const currentFolderImages = ref<ImageData[]>([])
 const imageContainer = ref<HTMLElement>()
+
+
 
 // Zoom and pan state
 const zoomLevel = ref(1)
@@ -643,6 +648,8 @@ const resetImageView = () => {
 
 
 
+
+
 // Enhanced keyboard navigation using configuration
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
@@ -1046,6 +1053,9 @@ defineExpose({
   max-height: 100%;
   object-fit: contain;
 }
+
+
+
 
 .info-bar {
   display: flex;

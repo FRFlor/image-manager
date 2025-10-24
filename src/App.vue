@@ -2,7 +2,8 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import ImageViewer from './components/ImageViewer.vue'
-import type { ApplicationState } from './types'
+import LoadingIndicator from './components/LoadingIndicator.vue'
+import type { ApplicationState, LoadingState } from './types'
 
 // Application state
 const appState = ref<ApplicationState>({
@@ -11,15 +12,21 @@ const appState = ref<ApplicationState>({
   supportedFormats: []
 })
 
-const isLoading = ref(true)
-const error = ref<string | null>(null)
+const loadingState = ref<LoadingState>({
+  isLoading: true,
+  operation: 'Initializing application...'
+})
 const imageViewer = ref<InstanceType<typeof ImageViewer>>()
 
 onMounted(async () => {
   try {
+    loadingState.value = {
+      isLoading: true,
+      operation: 'Loading supported image formats...'
+    }
+
     const formats = await invoke<string[]>('get_supported_image_types')
     appState.value.supportedFormats = formats
-    isLoading.value = false
     
     // Set up Tauri event listeners
     try {
@@ -88,16 +95,29 @@ onMounted(async () => {
             }
           } catch (error) {
             console.error('Failed to load auto-session:', error)
+          } finally {
+            // Application is ready
+            loadingState.value = {
+              isLoading: false,
+              operation: ''
+            }
           }
         }, 200)
       } catch (error) {
         console.error('Failed to load auto-session on startup:', error)
+        loadingState.value = {
+          isLoading: false,
+          operation: ''
+        }
       }
     }, 100)
     
   } catch (err) {
-    error.value = err as string
-    isLoading.value = false
+    console.error('Application initialization error:', err)
+    loadingState.value = {
+      isLoading: false,
+      operation: ''
+    }
   }
 })
 
@@ -115,11 +135,21 @@ const handleOpenImageRequest = async () => {
   try {
     console.log('Opening image dialog...')
     
+    loadingState.value = {
+      isLoading: true,
+      operation: 'Opening image dialog...'
+    }
+    
     // Open file dialog to select an image
     const selectedPath = await invoke<string | null>('open_image_dialog')
     
     if (selectedPath) {
       console.log('Selected image:', selectedPath)
+      
+      loadingState.value = {
+        isLoading: true,
+        operation: 'Loading image...'
+      }
       
       // Read the image data
       const imageData = await invoke('read_image_file', { path: selectedPath })
@@ -167,7 +197,11 @@ const handleOpenImageRequest = async () => {
     }
   } catch (error) {
     console.error('Failed to open image:', error)
-    // You could show an error message to the user here
+  } finally {
+    loadingState.value = {
+      isLoading: false,
+      operation: ''
+    }
   }
 }
 </script>
@@ -175,23 +209,24 @@ const handleOpenImageRequest = async () => {
 <template>
   <div class="app">
     <main>
-      <div v-if="isLoading" class="loading-screen">
-        <div class="spinner"></div>
-        <p>Loading application...</p>
-      </div>
-
-      <div v-else-if="error" class="error-screen">
-        <h2>Connection Error</h2>
-        <p class="error-message">{{ error }}</p>
-        <p>Please ensure the Tauri backend is running properly.</p>
-      </div>
-
-      <div v-else class="app-content">
+      <div class="app-content">
         <!-- Image Viewer -->
         <ImageViewer
           ref="imageViewer"
           @openImageRequested="handleOpenImageRequest"
         />
+        
+        <!-- Loading Indicator -->
+        <LoadingIndicator
+          :loading="loadingState.isLoading"
+          :message="loadingState.message"
+          :operation="loadingState.operation"
+          :progress="loadingState.progress"
+          :show-progress="loadingState.progress !== undefined"
+          :fullscreen="true"
+        />
+        
+
       </div>
     </main>
   </div>
@@ -209,42 +244,7 @@ main {
   flex-direction: column;
 }
 
-.loading-screen,
-.error-screen {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  padding: 40px;
-  background: white;
-}
 
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #007bff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 16px;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.error-screen h2 {
-  color: #dc3545;
-  margin-bottom: 16px;
-}
-
-.error-message {
-  color: #dc3545;
-  font-weight: bold;
-  margin-bottom: 8px;
-}
 
 .app-content {
   height: 100%;

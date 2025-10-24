@@ -62,6 +62,16 @@ export interface ApplicationState {
   supportedFormats: string[]
 }
 
+/**
+ * Loading state interface for UI feedback
+ */
+export interface LoadingState {
+  isLoading: boolean
+  operation: string
+  progress?: number
+  message?: string
+}
+
 // Re-export service interfaces
 export type {
   FileSystemService,
@@ -70,3 +80,4 @@ export type {
   ZoomController,
   TabManager
 } from './services'
+
