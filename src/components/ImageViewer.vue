@@ -4,9 +4,10 @@
     <div class="tab-bar">
       <div class="tab-container">
         <div 
-          v-for="(tab, index) in tabs" 
+          v-for="tab in Array.from(tabs.values())" 
           :key="tab.id"
           @click="switchToTab(tab.id)"
+          @contextmenu.prevent="showTabContextMenu($event, tab.id)"
           class="tab"
           :class="{ active: tab.id === activeTabId }"
         >
@@ -82,12 +83,32 @@
         </button>
       </div>
     </div>
+
+    <!-- Tab Context Menu -->
+    <div 
+      v-if="contextMenuVisible" 
+      class="context-menu"
+      :style="{ left: contextMenuPosition.x + 'px', top: contextMenuPosition.y + 'px' }"
+    >
+      <div class="context-menu-item" @click="closeTab(contextMenuTabId!)">
+        Close Tab
+      </div>
+      <div class="context-menu-item" @click="closeOtherTabs">
+        Close Other Tabs
+      </div>
+      <div class="context-menu-separator"></div>
+      <div class="context-menu-item" @click="closeTabsToLeft">
+        Close Tabs to Left
+      </div>
+      <div class="context-menu-item" @click="closeTabsToRight">
+        Close Tabs to Right
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { ImageData, TabData } from '../types'
 
 // Props and Emits
@@ -134,6 +155,9 @@ const openImage = (imageData: ImageData, folderImages: ImageData[]) => {
   tabs.value.set(tabId, tab)
   activeTabId.value = tabId
   currentFolderImages.value = folderImages
+  
+  // Store folder context for this tab
+  tabFolderContexts.value.set(tabId, folderImages)
 
   console.log(`Opened image: ${imageData.name}`)
   console.log(`Folder contains ${folderImages.length} images`)
@@ -148,19 +172,74 @@ const switchToTab = (tabId: string) => {
   tab.isActive = true
   activeTabId.value = tabId
 
-  // Update folder images for navigation (find folder images for this tab's image)
-  // For now, we'll keep the current folder images, but in a full implementation
-  // we might want to reload the folder context for each tab
+  // Load folder context for this tab if needed
+  loadFolderContextForTab(tab)
+}
+
+// Store folder contexts for each tab
+const tabFolderContexts = ref<Map<string, ImageData[]>>(new Map())
+
+const loadFolderContextForTab = async (tab: TabData) => {
+  // Check if we already have folder context for this tab
+  if (tabFolderContexts.value.has(tab.id)) {
+    currentFolderImages.value = tabFolderContexts.value.get(tab.id) || []
+    return
+  }
+
+  // Load folder context for this tab's image
+  try {
+    const imagePath = tab.imageData.path
+    const folderPath = imagePath.substring(0, imagePath.lastIndexOf('/'))
+    
+    // Import invoke here to avoid the unused import warning
+    const { invoke } = await import('@tauri-apps/api/core')
+    const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
+    
+    // Filter and transform image files in the folder
+    const imageEntries = folderEntries.filter(entry => entry.is_image)
+    const folderImagePromises = imageEntries.map(async (entry) => {
+      const rawData = await invoke<any>('read_image_file', { path: entry.path })
+      return {
+        id: rawData.id,
+        name: rawData.name,
+        path: rawData.path,
+        assetUrl: rawData.asset_url,
+        dimensions: rawData.dimensions,
+        fileSize: rawData.file_size,
+        lastModified: new Date(rawData.last_modified)
+      } as ImageData
+    })
+    
+    const folderImages = await Promise.all(folderImagePromises)
+    folderImages.sort((a, b) => a.name.localeCompare(b.name))
+    
+    // Store folder context for this tab
+    tabFolderContexts.value.set(tab.id, folderImages)
+    currentFolderImages.value = folderImages
+  } catch (error) {
+    console.error('Failed to load folder context for tab:', error)
+    currentFolderImages.value = [tab.imageData] // Fallback to just the current image
+  }
 }
 
 const closeTab = (tabId: string) => {
+  const tabToClose = tabs.value.get(tabId)
+  if (!tabToClose) return
+  
+  // Clean up folder context for this tab
+  tabFolderContexts.value.delete(tabId)
   tabs.value.delete(tabId)
   
   if (activeTabId.value === tabId) {
-    // Find another tab to activate
-    const remainingTabs = Array.from(tabs.value.values())
+    // Find another tab to activate - prefer the tab to the right, then left
+    const remainingTabs = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
     if (remainingTabs.length > 0) {
-      const newActiveTab = remainingTabs[remainingTabs.length - 1]
+      // Find the next tab after the closed one, or the last tab if none found
+      const closedTabOrder = tabToClose.order
+      let newActiveTab = remainingTabs.find(tab => tab.order > closedTabOrder)
+      if (!newActiveTab) {
+        newActiveTab = remainingTabs[remainingTabs.length - 1]
+      }
       switchToTab(newActiveTab.id)
     } else {
       activeTabId.value = null
@@ -176,7 +255,9 @@ const nextImage = async () => {
   const nextIndex = (currentIndex + 1) % currentFolderImages.value.length
   const nextImageData = currentFolderImages.value[nextIndex]
   
-  await updateCurrentTabImage(nextImageData)
+  if (nextImageData) {
+    await updateCurrentTabImage(nextImageData)
+  }
 }
 
 const previousImage = async () => {
@@ -186,7 +267,9 @@ const previousImage = async () => {
   const prevIndex = currentIndex === 0 ? currentFolderImages.value.length - 1 : currentIndex - 1
   const prevImageData = currentFolderImages.value[prevIndex]
   
-  await updateCurrentTabImage(prevImageData)
+  if (prevImageData) {
+    await updateCurrentTabImage(prevImageData)
+  }
 }
 
 const updateCurrentTabImage = async (newImageData: ImageData) => {
@@ -206,6 +289,130 @@ const openNewImage = () => {
   emit('openImageRequested')
 }
 
+// Enhanced tab management functions
+const openImageInNewTab = async () => {
+  if (!activeImage.value || currentFolderImages.value.length <= 1) return
+  
+  const currentIndex = currentImageIndex.value
+  const nextIndex = (currentIndex + 1) % currentFolderImages.value.length
+  const nextImageData = currentFolderImages.value[nextIndex]
+  
+  if (nextImageData) {
+    // Create a new tab for the next image
+    const tabId = `tab-${Date.now()}`
+    const tab: TabData = {
+      id: tabId,
+      title: nextImageData.name,
+      imageData: nextImageData,
+      isActive: true, // Switch to the new tab immediately
+      order: tabs.value.size
+    }
+    
+    // Set all existing tabs to inactive
+    tabs.value.forEach(existingTab => {
+      existingTab.isActive = false
+    })
+    
+    tabs.value.set(tabId, tab)
+    activeTabId.value = tabId
+    
+    // Store the same folder context for the new tab
+    if (tabFolderContexts.value.has(activeTabId.value)) {
+      const currentFolderContext = tabFolderContexts.value.get(activeTabId.value)
+      if (currentFolderContext) {
+        tabFolderContexts.value.set(tabId, currentFolderContext)
+        currentFolderImages.value = currentFolderContext
+      }
+    }
+    
+    console.log(`Opened ${nextImageData.name} in new tab and switched to it`)
+  }
+}
+
+const switchToNextTab = () => {
+  const tabArray = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+  if (tabArray.length <= 1) return
+  
+  const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
+  const nextIndex = (currentIndex + 1) % tabArray.length
+  switchToTab(tabArray[nextIndex].id)
+}
+
+const switchToPreviousTab = () => {
+  const tabArray = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+  if (tabArray.length <= 1) return
+  
+  const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
+  const prevIndex = currentIndex === 0 ? tabArray.length - 1 : currentIndex - 1
+  switchToTab(tabArray[prevIndex].id)
+}
+
+const createNewTab = () => {
+  // Open file picker to create a new tab
+  emit('openImageRequested')
+}
+
+const closeCurrentTab = () => {
+  if (activeTabId.value) {
+    closeTab(activeTabId.value)
+  }
+}
+
+// Context menu functionality
+const contextMenuVisible = ref(false)
+const contextMenuPosition = ref({ x: 0, y: 0 })
+const contextMenuTabId = ref<string | null>(null)
+
+const showTabContextMenu = (event: MouseEvent, tabId: string) => {
+  contextMenuPosition.value = { x: event.clientX, y: event.clientY }
+  contextMenuTabId.value = tabId
+  contextMenuVisible.value = true
+  
+  // Close context menu when clicking elsewhere
+  const closeContextMenu = () => {
+    contextMenuVisible.value = false
+    document.removeEventListener('click', closeContextMenu)
+  }
+  
+  setTimeout(() => {
+    document.addEventListener('click', closeContextMenu)
+  }, 0)
+}
+
+const closeOtherTabs = () => {
+  if (!contextMenuTabId.value) return
+  
+  const tabsToClose = Array.from(tabs.value.keys()).filter(id => id !== contextMenuTabId.value)
+  tabsToClose.forEach(tabId => closeTab(tabId))
+  contextMenuVisible.value = false
+}
+
+const closeTabsToRight = () => {
+  if (!contextMenuTabId.value) return
+  
+  const tabArray = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+  const contextTabIndex = tabArray.findIndex(tab => tab.id === contextMenuTabId.value)
+  
+  if (contextTabIndex >= 0) {
+    const tabsToClose = tabArray.slice(contextTabIndex + 1)
+    tabsToClose.forEach(tab => closeTab(tab.id))
+  }
+  contextMenuVisible.value = false
+}
+
+const closeTabsToLeft = () => {
+  if (!contextMenuTabId.value) return
+  
+  const tabArray = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+  const contextTabIndex = tabArray.findIndex(tab => tab.id === contextMenuTabId.value)
+  
+  if (contextTabIndex >= 0) {
+    const tabsToClose = tabArray.slice(0, contextTabIndex)
+    tabsToClose.forEach(tab => closeTab(tab.id))
+  }
+  contextMenuVisible.value = false
+}
+
 const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -222,10 +429,21 @@ const onImageError = () => {
   console.error('Failed to load image')
 }
 
-// Keyboard navigation
+// Enhanced keyboard navigation
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
     return // Don't handle keyboard shortcuts when typing in inputs
+  }
+
+  // Handle Ctrl+Tab and Ctrl+Shift+Tab for tab switching
+  if (event.key === 'Tab' && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault()
+    if (event.shiftKey) {
+      switchToPreviousTab()
+    } else {
+      switchToNextTab()
+    }
+    return
   }
 
   switch (event.key) {
@@ -237,6 +455,11 @@ const handleKeyDown = (event: KeyboardEvent) => {
       event.preventDefault()
       nextImage()
       break
+    case 'Enter':
+      // Open next image in new tab while staying in current viewer
+      event.preventDefault()
+      openImageInNewTab()
+      break
     case 'Escape':
       // Close current tab
       if (activeTabId.value) {
@@ -247,7 +470,22 @@ const handleKeyDown = (event: KeyboardEvent) => {
     case 'O':
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault()
-        openNewImage()
+        // Open new tab instead of returning to file picker
+        createNewTab()
+      }
+      break
+    case 't':
+    case 'T':
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault()
+        createNewTab()
+      }
+      break
+    case 'w':
+    case 'W':
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault()
+        closeCurrentTab()
       }
       break
   }
@@ -489,6 +727,36 @@ defineExpose({
 
 .open-btn:hover {
   background: #0056b3;
+}
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background: #2d2d2d;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+.context-menu-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #fff;
+  transition: background-color 0.2s;
+}
+
+.context-menu-item:hover {
+  background: #404040;
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: #404040;
+  margin: 4px 0;
 }
 
 /* Responsive design */
