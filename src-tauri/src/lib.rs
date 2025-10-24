@@ -445,15 +445,11 @@ async fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(
     *state.is_exiting.lock().unwrap() = true;
 
     // Close all windows gracefully
+    // When all windows are closed, Tauri will exit naturally with code 0
     for (_, window) in app.webview_windows() {
         let _ = window.close();
     }
 
-    // Give windows a moment to clean up before forcing exit
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-    // Exit the application
-    app.exit(0);
     Ok(())
 }
 
