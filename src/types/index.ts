@@ -57,7 +57,6 @@ export interface SessionData {
  * Represents the overall application state
  */
 export interface ApplicationState {
-  currentView: 'folder-browser' | 'image-viewer'
   openTabs: Map<string, TabData>
   activeTabId: string | null
   supportedFormats: string[]

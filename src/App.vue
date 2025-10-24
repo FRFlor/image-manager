@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import FolderNavigator from './components/FolderNavigator.vue'
 import ImageViewer from './components/ImageViewer.vue'
-import type { ImageData, ApplicationState } from './types'
+import type { ApplicationState } from './types'
 
 // Application state
 const appState = ref<ApplicationState>({
-  currentView: 'folder-browser',
   openTabs: new Map(),
   activeTabId: null,
   supportedFormats: []
@@ -16,25 +14,6 @@ const appState = ref<ApplicationState>({
 const isLoading = ref(true)
 const error = ref<string | null>(null)
 const imageViewer = ref<InstanceType<typeof ImageViewer>>()
-
-// Event handlers
-const handleImageOpened = (imageData: ImageData, folderImages: ImageData[]) => {
-  console.log('Image opened:', imageData.name)
-  console.log('Folder contains:', folderImages.length, 'images')
-  
-  // Switch to image viewer and open the image
-  appState.value.currentView = 'image-viewer'
-  
-  // Use nextTick to ensure the ImageViewer component is mounted
-  setTimeout(() => {
-    imageViewer.value?.openImage(imageData, folderImages)
-  }, 0)
-}
-
-const handleOpenImageRequested = () => {
-  // Switch back to file picker
-  appState.value.currentView = 'folder-browser'
-}
 
 onMounted(async () => {
   try {
@@ -61,7 +40,7 @@ onMounted(async () => {
       await listen('menu-save-session', async () => {
         console.log('Menu save session requested')
         try {
-          if (appState.value.currentView === 'image-viewer' && imageViewer.value) {
+          if (imageViewer.value) {
             await imageViewer.value.saveSessionDialog()
           } else {
             console.log('No active session to save')
@@ -75,20 +54,12 @@ onMounted(async () => {
       await listen('menu-load-session', async () => {
         console.log('Menu load session requested')
         try {
-          // Switch to image viewer first to ensure component is available
-          appState.value.currentView = 'image-viewer'
-          
           // Wait for component to mount
           setTimeout(async () => {
             try {
-              const sessionLoaded = await imageViewer.value?.loadSessionDialog()
-              if (!sessionLoaded) {
-                // If no session was loaded (user cancelled), go back to folder browser
-                appState.value.currentView = 'folder-browser'
-              }
+              await imageViewer.value?.loadSessionDialog()
             } catch (error) {
               console.error('Failed to load session from menu:', error)
-              appState.value.currentView = 'folder-browser'
             }
           }, 100)
         } catch (error) {
@@ -106,27 +77,21 @@ onMounted(async () => {
       try {
         console.log('Attempting to load auto-session...')
         
-        // First switch to image viewer to ensure the component is mounted
-        appState.value.currentView = 'image-viewer'
-        
-        // Wait a bit more for the component to be fully mounted
+        // Wait for the component to be fully mounted
         setTimeout(async () => {
           try {
             const sessionLoaded = await imageViewer.value?.loadAutoSession()
             if (sessionLoaded) {
               console.log('Auto-session loaded and restored')
             } else {
-              console.log('No auto-session found, switching back to folder browser')
-              appState.value.currentView = 'folder-browser'
+              console.log('No auto-session found')
             }
           } catch (error) {
             console.error('Failed to load auto-session:', error)
-            appState.value.currentView = 'folder-browser'
           }
         }, 200)
       } catch (error) {
         console.error('Failed to load auto-session on startup:', error)
-        appState.value.currentView = 'folder-browser'
       }
     }, 100)
     
@@ -144,6 +109,67 @@ onUnmounted(async () => {
     console.error('Failed to save session on unmount:', error)
   }
 })
+
+// Handle open image request from ImageViewer
+const handleOpenImageRequest = async () => {
+  try {
+    console.log('Opening image dialog...')
+    
+    // Open file dialog to select an image
+    const selectedPath = await invoke<string | null>('open_image_dialog')
+    
+    if (selectedPath) {
+      console.log('Selected image:', selectedPath)
+      
+      // Read the image data
+      const imageData = await invoke('read_image_file', { path: selectedPath })
+      
+      // Get the folder path and load other images in the same folder
+      const folderPath = selectedPath.substring(0, selectedPath.lastIndexOf('/'))
+      const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
+      
+      // Filter and transform image files in the folder
+      const imageEntries = folderEntries.filter(entry => entry.is_image)
+      const folderImagePromises = imageEntries.map(async (entry) => {
+        const rawData = await invoke<any>('read_image_file', { path: entry.path })
+        return {
+          id: rawData.id,
+          name: rawData.name,
+          path: rawData.path,
+          assetUrl: rawData.asset_url,
+          dimensions: rawData.dimensions,
+          fileSize: rawData.file_size,
+          lastModified: new Date(rawData.last_modified)
+        }
+      })
+      
+      const folderImages = await Promise.all(folderImagePromises)
+      folderImages.sort((a, b) => a.name.localeCompare(b.name))
+      
+      // Transform the selected image data to match the expected format
+      const transformedImageData = {
+        id: imageData.id,
+        name: imageData.name,
+        path: imageData.path,
+        assetUrl: imageData.asset_url,
+        dimensions: imageData.dimensions,
+        fileSize: imageData.file_size,
+        lastModified: new Date(imageData.last_modified)
+      }
+      
+      // Open the image in the viewer
+      imageViewer.value?.openImage(transformedImageData, folderImages)
+      
+      console.log(`Opened image: ${transformedImageData.name}`)
+      console.log(`Folder contains ${folderImages.length} images`)
+    } else {
+      console.log('No image selected (user cancelled)')
+    }
+  } catch (error) {
+    console.error('Failed to open image:', error)
+    // You could show an error message to the user here
+  }
+}
 </script>
 
 <template>
@@ -161,20 +187,11 @@ onUnmounted(async () => {
       </div>
 
       <div v-else class="app-content">
-        <!-- File Picker View -->
-        <div v-if="appState.currentView === 'folder-browser'" class="picker-view">
-          <FolderNavigator
-            @image-opened="handleImageOpened"
-          />
-        </div>
-
-        <!-- Image Viewer View -->
-        <div v-else-if="appState.currentView === 'image-viewer'" class="viewer-view">
-          <ImageViewer
-            ref="imageViewer"
-            @open-image-requested="handleOpenImageRequested"
-          />
-        </div>
+        <!-- Image Viewer -->
+        <ImageViewer
+          ref="imageViewer"
+          @openImageRequested="handleOpenImageRequest"
+        />
       </div>
     </main>
   </div>
@@ -230,20 +247,6 @@ main {
 }
 
 .app-content {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.picker-view {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-}
-
-.viewer-view {
   height: 100%;
 }
 </style>
