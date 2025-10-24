@@ -115,6 +115,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import type { ImageData, TabData, SessionData } from '../types'
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from '../config/keyboardShortcuts'
 import { sessionService } from '../services/sessionService'
@@ -246,7 +247,7 @@ const loadFolderContextForTab = async (tab: TabData) => {
         id: rawData.id,
         name: rawData.name,
         path: rawData.path,
-        assetUrl: rawData.asset_url,
+        assetUrl: convertFileSrc(rawData.path),
         dimensions: rawData.dimensions,
         fileSize: rawData.file_size,
         lastModified: new Date(rawData.last_modified)
@@ -821,7 +822,7 @@ const restoreFromSession = async (sessionData: SessionData) => {
           id: imageData.id,
           name: imageData.name,
           path: imageData.path,
-          assetUrl: imageData.asset_url,
+          assetUrl: convertFileSrc(imageData.path),
           dimensions: imageData.dimensions,
           fileSize: imageData.file_size,
           lastModified: new Date(imageData.last_modified)

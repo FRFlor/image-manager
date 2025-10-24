@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import ImageViewer from './components/ImageViewer.vue'
 import LoadingIndicator from './components/LoadingIndicator.vue'
 import type { ApplicationState, LoadingState } from './types'
@@ -186,7 +186,7 @@ const handleOpenImageRequest = async () => {
           id: rawData.id,
           name: rawData.name,
           path: rawData.path,
-          assetUrl: rawData.asset_url,
+          assetUrl: convertFileSrc(rawData.path),
           dimensions: rawData.dimensions,
           fileSize: rawData.file_size,
           lastModified: new Date(rawData.last_modified)
@@ -201,7 +201,7 @@ const handleOpenImageRequest = async () => {
         id: imageData.id,
         name: imageData.name,
         path: imageData.path,
-        assetUrl: imageData.asset_url,
+        assetUrl: convertFileSrc(imageData.path),
         dimensions: imageData.dimensions,
         fileSize: imageData.file_size,
         lastModified: new Date(imageData.last_modified)
