@@ -405,29 +405,36 @@ async fn save_auto_session(session_data: SessionData) -> Result<(), String> {
 async fn load_auto_session() -> Result<Option<SessionData>, String> {
     use std::fs;
     use dirs;
-    
+
     // Get the application data directory
     let app_data_dir = dirs::data_dir()
         .ok_or("Failed to get application data directory")?
         .join("image-viewer");
-    
+
     let session_file = app_data_dir.join("auto-session.json");
-    
+
     // Check if the session file exists
     if !session_file.exists() {
         return Ok(None);
     }
-    
+
     // Read the file
     let json_data = fs::read_to_string(&session_file)
         .map_err(|e| format!("Failed to read session file: {}", e))?;
-    
+
     // Deserialize JSON data
     let session_data: SessionData = serde_json::from_str(&json_data)
         .map_err(|e| format!("Failed to parse session data: {}", e))?;
-    
+
     println!("Auto-session loaded from: {}", session_file.display());
     Ok(Some(session_data))
+}
+
+#[tauri::command]
+async fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
+    println!("Exiting application...");
+    app.exit(0);
+    Ok(())
 }
 
 // Menu functionality will be implemented separately
@@ -446,7 +453,8 @@ pub fn run() {
             save_session_dialog,
             load_session_dialog,
             save_auto_session,
-            load_auto_session
+            load_auto_session,
+            exit_app
         ])
         .setup(|app| {
             // --- Build the application menu ---
@@ -481,16 +489,15 @@ pub fn run() {
             });
 
             // --- Handle window close events ---
-            // On Windows, prevent immediate window close to allow session save
-            // macOS handles async operations in close handlers properly, but Windows doesn't
-            #[cfg(target_os = "windows")]
+            // Prevent immediate window close to allow session save on all platforms
+            // This ensures consistent behavior across macOS and Windows
             for (_, window) in app.webview_windows() {
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         // Prevent default close behavior to allow async session save
                         api.prevent_close();
                         // The tauri://close-requested event will be emitted to the frontend
-                        // Frontend will save the session and then manually close the window
+                        // Frontend will save the session and then call exit_app command
                     }
                 });
             }
