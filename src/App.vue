@@ -171,9 +171,11 @@ const handleOpenImageRequest = async () => {
       
       // Read the image data
       const imageData = await invoke<any>('read_image_file', { path: selectedPath })
-      
+
       // Get the folder path and load other images in the same folder
-      const folderPath = selectedPath.substring(0, selectedPath.lastIndexOf('/'))
+      // Handle both Windows (\) and Unix (/) path separators
+      const lastSeparatorIndex = Math.max(selectedPath.lastIndexOf('/'), selectedPath.lastIndexOf('\\'))
+      const folderPath = selectedPath.substring(0, lastSeparatorIndex)
       const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
       
       // Filter and transform image files in the folder

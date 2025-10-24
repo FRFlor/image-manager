@@ -230,7 +230,9 @@ const loadFolderContextForTab = async (tab: TabData) => {
   // Load folder context for this tab's image
   try {
     const imagePath = tab.imageData.path
-    const folderPath = imagePath.substring(0, imagePath.lastIndexOf('/'))
+    // Handle both Windows (\) and Unix (/) path separators
+    const lastSeparatorIndex = Math.max(imagePath.lastIndexOf('/'), imagePath.lastIndexOf('\\'))
+    const folderPath = imagePath.substring(0, lastSeparatorIndex)
 
     // Import invoke here to avoid the unused import warning
     const { invoke } = await import('@tauri-apps/api/core')
