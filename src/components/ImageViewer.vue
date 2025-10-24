@@ -110,6 +110,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { ImageData, TabData } from '../types'
+import { KEYBOARD_SHORTCUTS, matchesShortcut } from '../config/keyboardShortcuts'
 
 // Props and Emits
 const emit = defineEmits<{
@@ -429,103 +430,44 @@ const onImageError = () => {
   console.error('Failed to load image')
 }
 
-// Enhanced keyboard navigation
+// Enhanced keyboard navigation using configuration
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
     return // Don't handle keyboard shortcuts when typing in inputs
   }
 
-  // Handle Ctrl+Tab and Ctrl+Shift+Tab for tab switching
-  if (event.key === 'Tab' && (event.ctrlKey || event.metaKey)) {
+  // Find matching shortcut from configuration
+  const matchingShortcut = KEYBOARD_SHORTCUTS.find(shortcut => matchesShortcut(event, shortcut))
+  
+  if (matchingShortcut) {
     event.preventDefault()
-    if (event.shiftKey) {
-      switchToPreviousTab()
-    } else {
-      switchToNextTab()
-    }
-    return
-  }
-
-  switch (event.key) {
-    case 'ArrowLeft':
-      if (event.shiftKey) {
-        // Shift + Left Arrow: Switch to previous tab
-        event.preventDefault()
-        switchToPreviousTab()
-      } else {
-        // Left Arrow: Previous image in current tab
-        event.preventDefault()
-        previousImage()
-      }
-      break
-    case 'ArrowRight':
-      if (event.shiftKey) {
-        // Shift + Right Arrow: Switch to next tab
-        event.preventDefault()
-        switchToNextTab()
-      } else {
-        // Right Arrow: Next image in current tab
-        event.preventDefault()
+    
+    // Execute the action based on the shortcut configuration
+    switch (matchingShortcut.action) {
+      case 'nextImage':
         nextImage()
-      }
-      break
-    case 'Enter':
-      // Open next image in new tab while staying in current viewer
-      event.preventDefault()
-      openImageInNewTab()
-      break
-    case 'Escape':
-      // Close current tab
-      if (activeTabId.value) {
-        closeTab(activeTabId.value)
-      }
-      break
-    case 'o':
-    case 'O':
-      if (event.ctrlKey || event.metaKey) {
-        event.preventDefault()
-        // Open new tab instead of returning to file picker
+        break
+      case 'previousImage':
+        previousImage()
+        break
+      case 'nextTab':
+        switchToNextTab()
+        break
+      case 'previousTab':
+        switchToPreviousTab()
+        break
+      case 'openImageInNewTab':
+        openImageInNewTab()
+        break
+      case 'createNewTab':
         createNewTab()
-      }
-      break
-    case 't':
-    case 'T':
-      if (event.ctrlKey || event.metaKey) {
-        event.preventDefault()
-        createNewTab()
-      }
-      break
-    case 'w':
-    case 'W':
-      if (event.ctrlKey || event.metaKey) {
-        event.preventDefault()
+        break
+      case 'closeCurrentTab':
         closeCurrentTab()
-      }
-      break
-    case 'a':
-    case 'A':
-      if (event.shiftKey) {
-        // Shift + A: Switch to previous tab
-        event.preventDefault()
-        switchToPreviousTab()
-      } else {
-        // A: Previous image in current tab
-        event.preventDefault()
-        previousImage()
-      }
-      break
-    case 'd':
-    case 'D':
-      if (event.shiftKey) {
-        // Shift + D: Switch to next tab
-        event.preventDefault()
-        switchToNextTab()
-      } else {
-        // D: Next image in current tab
-        event.preventDefault()
-        nextImage()
-      }
-      break
+        break
+      default:
+        console.warn(`Unknown action: ${matchingShortcut.action}`)
+    }
   }
 }
 
