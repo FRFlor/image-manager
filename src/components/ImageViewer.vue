@@ -874,11 +874,6 @@ const restoreFromSession = async (sessionData: SessionData) => {
 const saveAutoSession = async () => {
   console.log('saveAutoSession called, tabs count:', tabs.value.size)
 
-  if (tabs.value.size === 0) {
-    console.log('No tabs to save, skipping auto-session save')
-    return
-  }
-
   try {
     const sessionData = createSessionData()
     console.log('Created session data:', sessionData)
