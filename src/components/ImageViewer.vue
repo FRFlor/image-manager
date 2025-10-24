@@ -1,0 +1,515 @@
+<template>
+  <div class="image-viewer">
+    <!-- Tab Navigation -->
+    <div class="tab-bar">
+      <div class="tab-container">
+        <div 
+          v-for="(tab, index) in tabs" 
+          :key="tab.id"
+          @click="switchToTab(tab.id)"
+          class="tab"
+          :class="{ active: tab.id === activeTabId }"
+        >
+          <span class="tab-title">{{ tab.title }}</span>
+          <button 
+            @click.stop="closeTab(tab.id)"
+            class="tab-close"
+            :title="`Close ${tab.title}`"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+      <div class="tab-controls">
+        <button @click="openNewImage" class="new-tab-btn" title="Open new image">
+          +
+        </button>
+      </div>
+    </div>
+
+    <!-- Image Display Area -->
+    <div class="image-display" v-if="activeImage">
+      <div class="image-container" ref="imageContainer">
+        <img 
+          :src="activeImage.assetUrl" 
+          :alt="activeImage.name"
+          class="main-image"
+          @load="onImageLoad"
+          @error="onImageError"
+        />
+      </div>
+
+      <!-- Image Info Bar -->
+      <div class="info-bar">
+        <div class="image-info">
+          <span class="image-name">{{ activeImage.name }}</span>
+          <span class="image-details">
+            {{ activeImage.dimensions.width }}×{{ activeImage.dimensions.height }} • 
+            {{ formatFileSize(activeImage.fileSize) }}
+          </span>
+          <span class="folder-position" v-if="currentFolderImages.length > 1">
+            {{ currentImageIndex + 1 }} of {{ currentFolderImages.length }}
+          </span>
+        </div>
+        <div class="navigation-controls">
+          <button 
+            @click="previousImage" 
+            :disabled="currentFolderImages.length <= 1"
+            class="nav-btn"
+            title="Previous image (←)"
+          >
+            ← Prev
+          </button>
+          <button 
+            @click="nextImage" 
+            :disabled="currentFolderImages.length <= 1"
+            class="nav-btn"
+            title="Next image (→)"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div v-else class="empty-viewer">
+      <div class="empty-content">
+        <h3>No image selected</h3>
+        <p>Open an image to start viewing</p>
+        <button @click="openNewImage" class="open-btn">
+          Open Image
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
+import type { ImageData, TabData } from '../types'
+
+// Props and Emits
+const emit = defineEmits<{
+  openImageRequested: []
+}>()
+
+// Reactive state
+const tabs = ref<Map<string, TabData>>(new Map())
+const activeTabId = ref<string | null>(null)
+const currentFolderImages = ref<ImageData[]>([])
+const imageContainer = ref<HTMLElement>()
+
+// Computed properties
+const activeImage = computed(() => {
+  if (!activeTabId.value) return null
+  const tab = tabs.value.get(activeTabId.value)
+  return tab?.imageData || null
+})
+
+const currentImageIndex = computed(() => {
+  if (!activeImage.value) return -1
+  return currentFolderImages.value.findIndex(img => img.path === activeImage.value!.path)
+})
+
+// Methods
+const openImage = (imageData: ImageData, folderImages: ImageData[]) => {
+  // Create a new tab for this image
+  const tabId = `tab-${Date.now()}`
+  const tab: TabData = {
+    id: tabId,
+    title: imageData.name,
+    imageData,
+    isActive: true,
+    order: tabs.value.size
+  }
+
+  // Set all existing tabs to inactive
+  tabs.value.forEach(existingTab => {
+    existingTab.isActive = false
+  })
+
+  // Add the new tab
+  tabs.value.set(tabId, tab)
+  activeTabId.value = tabId
+  currentFolderImages.value = folderImages
+
+  console.log(`Opened image: ${imageData.name}`)
+  console.log(`Folder contains ${folderImages.length} images`)
+}
+
+const switchToTab = (tabId: string) => {
+  const tab = tabs.value.get(tabId)
+  if (!tab) return
+
+  // Update active states
+  tabs.value.forEach(t => { t.isActive = false })
+  tab.isActive = true
+  activeTabId.value = tabId
+
+  // Update folder images for navigation (find folder images for this tab's image)
+  // For now, we'll keep the current folder images, but in a full implementation
+  // we might want to reload the folder context for each tab
+}
+
+const closeTab = (tabId: string) => {
+  tabs.value.delete(tabId)
+  
+  if (activeTabId.value === tabId) {
+    // Find another tab to activate
+    const remainingTabs = Array.from(tabs.value.values())
+    if (remainingTabs.length > 0) {
+      const newActiveTab = remainingTabs[remainingTabs.length - 1]
+      switchToTab(newActiveTab.id)
+    } else {
+      activeTabId.value = null
+      currentFolderImages.value = []
+    }
+  }
+}
+
+const nextImage = async () => {
+  if (currentFolderImages.value.length <= 1 || !activeImage.value) return
+  
+  const currentIndex = currentImageIndex.value
+  const nextIndex = (currentIndex + 1) % currentFolderImages.value.length
+  const nextImageData = currentFolderImages.value[nextIndex]
+  
+  await updateCurrentTabImage(nextImageData)
+}
+
+const previousImage = async () => {
+  if (currentFolderImages.value.length <= 1 || !activeImage.value) return
+  
+  const currentIndex = currentImageIndex.value
+  const prevIndex = currentIndex === 0 ? currentFolderImages.value.length - 1 : currentIndex - 1
+  const prevImageData = currentFolderImages.value[prevIndex]
+  
+  await updateCurrentTabImage(prevImageData)
+}
+
+const updateCurrentTabImage = async (newImageData: ImageData) => {
+  if (!activeTabId.value) return
+  
+  const activeTab = tabs.value.get(activeTabId.value)
+  if (!activeTab) return
+  
+  // Update the tab with the new image data
+  activeTab.imageData = newImageData
+  activeTab.title = newImageData.name
+  
+  console.log(`Navigated to: ${newImageData.name}`)
+}
+
+const openNewImage = () => {
+  emit('openImageRequested')
+}
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+const onImageLoad = () => {
+  console.log('Image loaded successfully')
+}
+
+const onImageError = () => {
+  console.error('Failed to load image')
+}
+
+// Keyboard navigation
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+    return // Don't handle keyboard shortcuts when typing in inputs
+  }
+
+  switch (event.key) {
+    case 'ArrowLeft':
+      event.preventDefault()
+      previousImage()
+      break
+    case 'ArrowRight':
+      event.preventDefault()
+      nextImage()
+      break
+    case 'Escape':
+      // Close current tab
+      if (activeTabId.value) {
+        closeTab(activeTabId.value)
+      }
+      break
+    case 'o':
+    case 'O':
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault()
+        openNewImage()
+      }
+      break
+  }
+}
+
+// Lifecycle
+onMounted(() => {
+  document.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyDown)
+})
+
+// Expose methods for parent component
+defineExpose({
+  openImage
+})
+</script>
+
+<style scoped>
+.image-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a1a1a;
+  color: white;
+}
+
+.tab-bar {
+  display: flex;
+  background: #2d2d2d;
+  border-bottom: 1px solid #404040;
+  flex-shrink: 0;
+}
+
+.tab-container {
+  display: flex;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tab-container::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #2d2d2d;
+  border-right: 1px solid #404040;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  min-width: 120px;
+  max-width: 200px;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  background: #3d3d3d;
+}
+
+.tab.active {
+  background: #1a1a1a;
+  border-bottom: 2px solid #007bff;
+}
+
+.tab-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+
+.tab-close {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.tab-close:hover {
+  background: #ff4444;
+  color: white;
+}
+
+.tab-controls {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border-left: 1px solid #404040;
+}
+
+.new-tab-btn {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.new-tab-btn:hover {
+  background: #3d3d3d;
+  color: white;
+}
+
+.image-display {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.image-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow: hidden;
+}
+
+.main-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.info-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #2d2d2d;
+  border-top: 1px solid #404040;
+  flex-shrink: 0;
+}
+
+.image-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.image-name {
+  font-weight: 600;
+  font-size: 16px;
+  color: white;
+}
+
+.image-details {
+  font-size: 14px;
+  color: #999;
+}
+
+.folder-position {
+  font-size: 12px;
+  color: #666;
+}
+
+.navigation-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.nav-btn {
+  padding: 8px 16px;
+  background: #404040;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: #505050;
+}
+
+.nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.empty-viewer {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-content {
+  text-align: center;
+  color: #999;
+}
+
+.empty-content h3 {
+  margin: 0 0 8px 0;
+  color: white;
+  font-size: 24px;
+}
+
+.empty-content p {
+  margin: 0 0 24px 0;
+  font-size: 16px;
+}
+
+.open-btn {
+  padding: 12px 24px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s;
+}
+
+.open-btn:hover {
+  background: #0056b3;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .info-bar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .image-info {
+    text-align: center;
+  }
+  
+  .navigation-controls {
+    justify-content: center;
+  }
+  
+  .tab {
+    min-width: 100px;
+    max-width: 150px;
+  }
+}
+</style>

@@ -13,6 +13,16 @@ This project uses **pnpm** as the package manager. All Node.js package managemen
 - **Run scripts**: `pnpm run <script>` or `pnpm <script>` (not `npm run <script>`)
 - **Execute binaries**: `pnpm exec <command>` (not `npx <command>`)
 
+## Tauri-Specific Commands
+
+This is a Tauri application. Use these specific commands:
+
+- **Start development server**: `pnpm tauri:dev` (not `pnpm run dev` or `pnpm dev`)
+- **Build for production**: `pnpm tauri:build` (not `pnpm run build`)
+- **Tauri commands**: `pnpm tauri <command>` for any Tauri CLI operations
+
+The `pnpm tauri:dev` command starts both the Vite frontend development server AND the Tauri desktop application window. Using `pnpm run dev` only starts the web server without the native desktop functionality.
+
 ## Rationale
 
 - Faster installation and better disk space efficiency

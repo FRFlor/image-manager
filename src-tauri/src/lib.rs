@@ -239,6 +239,38 @@ async fn open_folder_dialog(app_handle: tauri::AppHandle) -> Result<Option<Strin
 }
 
 #[tauri::command]
+async fn open_image_dialog(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::oneshot;
+    
+    let (tx, rx) = oneshot::channel();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+    
+    let supported_extensions = get_supported_image_extensions();
+    let extensions: Vec<&str> = supported_extensions.iter().map(|s| s.as_str()).collect();
+    
+    app_handle.dialog().file()
+        .add_filter("Image Files", &extensions)
+        .pick_file(move |file_path| {
+            if let Ok(mut sender) = tx.lock() {
+                if let Some(tx) = sender.take() {
+                    let _ = tx.send(file_path);
+                }
+            }
+        });
+    
+    match rx.await {
+        Ok(Some(file_path)) => {
+            let path_str = file_path.to_string();
+            Ok(Some(path_str))
+        }
+        Ok(None) => Ok(None), // User cancelled the dialog
+        Err(_) => Err("Dialog operation failed".to_string()),
+    }
+}
+
+#[tauri::command]
 async fn save_session_dialog(_session_data: SessionData) -> Result<Option<String>, String> {
     // Implementation will be added in task 11
     Ok(None)
@@ -272,6 +304,7 @@ pub fn run() {
             read_image_file,
             get_supported_image_types,
             open_folder_dialog,
+            open_image_dialog,
             save_session_dialog,
             load_session_dialog,
             save_auto_session,

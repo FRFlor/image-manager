@@ -1,16 +1,10 @@
 {
   "enabled": true,
-  "name": "Health Check on Save",
-  "description": "Performs TypeScript and Cargo health checks when source files are modified to ensure the application remains in good standing",
+  "name": "Health Check on Task Completion",
+  "description": "Performs TypeScript and Cargo health checks when tasks are completed to ensure the application remains in good standing",
   "version": "1",
   "when": {
-    "type": "fileEdited",
-    "patterns": [
-      "src/**/*.ts",
-      "src/**/*.vue",
-      "src-tauri/src/**/*.rs",
-      "src-tauri/Cargo.toml"
-    ]
+    "type": "userTriggered"
   },
   "then": {
     "type": "askAgent",

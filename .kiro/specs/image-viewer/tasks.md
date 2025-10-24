@@ -21,7 +21,7 @@
   - Add file type validation and error handling
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 4. Create folder navigation component
+- [x] 4. Create folder navigation component
   - Build FolderNavigator.vue component with directory tree display
   - Implement folder browsing and navigation functionality
   - Add image file filtering and visual indicators
