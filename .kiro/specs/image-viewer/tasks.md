@@ -110,17 +110,15 @@
   - Create loading states and progress indicators
   - _Requirements: 2.5, 5.6, 7.4, 8.6_
 
-- [ ] 14. Create comprehensive test suite
-  - Write unit tests for Rust backend commands
-  - Create component tests for Vue components
-  - Add integration tests for file operations and session management
-  - Implement end-to-end tests for complete user workflows
-  - Test cross-platform compatibility and keyboard shortcuts
-  - _Requirements: All requirements validation_
-
-- [x] 15. Optimize performance and finalize application
+- [x] 14. Optimize performance and finalize application
   - Implement lazy loading for images and tabs
   - Optimize memory usage and cleanup
   - Add performance monitoring and optimization
   - Configure final build settings and packaging
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
+  
+## Todo
+
+- [ ] **Tab scrolling behavior**: When many tabs are open and a recent tab is selected, the tab section should scroll to show the selected tab name (currently the tab image loads properly but the tab bar doesn't scroll to the active tab)
+
+- [ ] **Click controls menu item**: Add a menu item under "View > Touch Controls" to toggle click controls on the screen for better visibility of the image
