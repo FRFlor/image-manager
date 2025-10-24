@@ -6,6 +6,7 @@ use image::io::Reader as ImageReader;
 use uuid::Uuid;
 use tauri::{
     Emitter,
+    Manager,
     menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem},
 };
 
@@ -478,6 +479,21 @@ pub fn run() {
                     _ => {}
                 }
             });
+
+            // --- Handle window close events ---
+            // On Windows, prevent immediate window close to allow session save
+            // macOS handles async operations in close handlers properly, but Windows doesn't
+            #[cfg(target_os = "windows")]
+            for (_, window) in app.webview_windows() {
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        // Prevent default close behavior to allow async session save
+                        api.prevent_close();
+                        // The tauri://close-requested event will be emitted to the frontend
+                        // Frontend will save the session and then manually close the window
+                    }
+                });
+            }
 
             // keep your existing logging init
             if cfg!(debug_assertions) {

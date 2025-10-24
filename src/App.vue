@@ -32,15 +32,40 @@ onMounted(async () => {
     // Set up Tauri event listeners
     try {
       const { listen } = await import('@tauri-apps/api/event')
-      
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+
       // Listen for window close event
       await listen('tauri://close-requested', async () => {
         console.log('Window close requested, saving session...')
+
         try {
+          // Save session before closing
           await imageViewer.value?.saveAutoSession()
           console.log('Session saved successfully')
+
+          // On Windows, we prevent the default close and must manually close
+          // On macOS, the close happens naturally, but calling close() again is safe
+          // Check if we're on Windows using user agent
+          const isWindows = navigator.userAgent.includes('Windows')
+
+          if (isWindows) {
+            console.log('Windows platform detected, manually closing window...')
+            const appWindow = getCurrentWindow()
+            await appWindow.close()
+          }
         } catch (error) {
           console.error('Failed to save session on close:', error)
+
+          // On Windows, close anyway even if save fails
+          const isWindows = navigator.userAgent.includes('Windows')
+          if (isWindows) {
+            try {
+              const appWindow = getCurrentWindow()
+              await appWindow.close()
+            } catch (closeError) {
+              console.error('Failed to close window:', closeError)
+            }
+          }
         }
       })
       
