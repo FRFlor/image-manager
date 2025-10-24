@@ -448,12 +448,26 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
   switch (event.key) {
     case 'ArrowLeft':
-      event.preventDefault()
-      previousImage()
+      if (event.shiftKey) {
+        // Shift + Left Arrow: Switch to previous tab
+        event.preventDefault()
+        switchToPreviousTab()
+      } else {
+        // Left Arrow: Previous image in current tab
+        event.preventDefault()
+        previousImage()
+      }
       break
     case 'ArrowRight':
-      event.preventDefault()
-      nextImage()
+      if (event.shiftKey) {
+        // Shift + Right Arrow: Switch to next tab
+        event.preventDefault()
+        switchToNextTab()
+      } else {
+        // Right Arrow: Next image in current tab
+        event.preventDefault()
+        nextImage()
+      }
       break
     case 'Enter':
       // Open next image in new tab while staying in current viewer
@@ -486,6 +500,30 @@ const handleKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault()
         closeCurrentTab()
+      }
+      break
+    case 'a':
+    case 'A':
+      if (event.shiftKey) {
+        // Shift + A: Switch to previous tab
+        event.preventDefault()
+        switchToPreviousTab()
+      } else {
+        // A: Previous image in current tab
+        event.preventDefault()
+        previousImage()
+      }
+      break
+    case 'd':
+    case 'D':
+      if (event.shiftKey) {
+        // Shift + D: Switch to next tab
+        event.preventDefault()
+        switchToNextTab()
+      } else {
+        // D: Next image in current tab
+        event.preventDefault()
+        nextImage()
       }
       break
   }
