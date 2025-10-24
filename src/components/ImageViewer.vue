@@ -20,12 +20,40 @@
     </div>
 
     <!-- Image Display Area -->
-    <div class="image-display" v-if="activeImage">
+    <div class="image-display" v-if="activeImage || isImageCorrupted">
       <div class="image-container" ref="imageContainer" @wheel="handleWheel" @mousedown="handleMouseDown" :class="{
         'dragging': isDragging,
         'pannable': fitMode === 'actual-size'
       }">
-        <img ref="imageElement" :src="activeImage.assetUrl" :alt="activeImage.name" class="main-image"
+        <!-- Corrupted Image Placeholder -->
+        <div v-if="isImageCorrupted" class="corrupted-placeholder">
+          <svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" class="corrupted-svg">
+            <!-- Background -->
+            <rect width="1920" height="1080" fill="#1a1a1a"/>
+
+            <!-- Warning Icon Circle -->
+            <circle cx="960" cy="440" r="80" fill="none" stroke="#ff6b6b" stroke-width="6"/>
+
+            <!-- Warning Icon Exclamation -->
+            <line x1="960" y1="390" x2="960" y2="460" stroke="#ff6b6b" stroke-width="8" stroke-linecap="round"/>
+            <circle cx="960" cy="485" r="6" fill="#ff6b6b"/>
+
+            <!-- Text: Corrupted File -->
+            <text x="960" y="580" font-family="system-ui, -apple-system, sans-serif" font-size="48"
+                  fill="#ff6b6b" text-anchor="middle" font-weight="500">
+              Corrupted File
+            </text>
+
+            <!-- File Name -->
+            <text x="960" y="640" font-family="system-ui, -apple-system, sans-serif" font-size="28"
+                  fill="#999" text-anchor="middle">
+              {{ currentFileEntry?.name || 'Unknown' }}
+            </text>
+          </svg>
+        </div>
+
+        <!-- Valid Image -->
+        <img v-else ref="imageElement" :src="activeImage.assetUrl" :alt="activeImage.name" class="main-image"
           :class="{ 'fit-to-window': fitMode === 'fit-to-window' }" :style="{
             transform: fitMode === 'actual-size'
               ? `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`
@@ -60,10 +88,13 @@
       <!-- Image Info Bar -->
       <div class="info-bar">
         <div class="image-info">
-          <span class="image-name">{{ activeImage.name }}</span>
-          <span class="image-details">
+          <span class="image-name">{{ currentFileEntry?.name || activeImage?.name || 'Unknown' }}</span>
+          <span class="image-details" v-if="!isImageCorrupted && activeImage">
             {{ activeImage.dimensions.width }}×{{ activeImage.dimensions.height }} •
             {{ formatFileSize(activeImage.fileSize) }}
+          </span>
+          <span class="image-details corrupted-status" v-else-if="isImageCorrupted">
+            Corrupted • Unable to load
           </span>
           <span class="folder-position" v-if="currentFolderSize > 1">
             {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
@@ -135,6 +166,7 @@ const imageContainer = ref<HTMLElement>()
 
 // Lazy loading state
 const tabFolderContexts = ref<Map<string, FolderContext>>(new Map())
+const currentFileEntry = ref<FileEntry | null>(null) // Track current file even if corrupted
 
 // Performance and memory management
 const managedResources: ManagedResource[] = []
@@ -166,10 +198,21 @@ const activeImage = computed(() => {
 })
 
 const currentImageIndex = computed(() => {
-  if (!activeImage.value || !activeTabId.value) return -1
+  if (!activeTabId.value) return -1
   const folderContext = tabFolderContexts.value.get(activeTabId.value)
   if (!folderContext) return -1
-  return folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
+
+  // Use currentFileEntry if available (works for corrupted images too)
+  if (currentFileEntry.value) {
+    return folderContext.fileEntries.findIndex(entry => entry.path === currentFileEntry.value!.path)
+  }
+
+  // Fallback to activeImage
+  if (activeImage.value) {
+    return folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
+  }
+
+  return -1
 })
 
 const currentFolderSize = computed(() => {
@@ -180,6 +223,11 @@ const currentFolderSize = computed(() => {
 
 const sortedTabs = computed(() => {
   return Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+})
+
+const isImageCorrupted = computed(() => {
+  // Image is corrupted if we have a file entry but no valid image data
+  return currentFileEntry.value !== null && (!activeImage.value || !activeImage.value.assetUrl)
 })
 
 // Helper function to load image metadata on-demand
@@ -237,6 +285,10 @@ const openImage = (imageData: ImageData, folderContext: FolderContext) => {
   // Store folder context for this tab
   tabFolderContexts.value.set(tabId, folderContext)
 
+  // Set current file entry
+  const fileEntry = folderContext.fileEntries.find(entry => entry.path === imageData.path)
+  currentFileEntry.value = fileEntry || null
+
   // Update currentFolderImages with loaded images only
   currentFolderImages.value = Array.from(folderContext.loadedImages.values())
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -271,10 +323,16 @@ const switchToTab = async (tabId: string) => {
     await loadFolderContextForTab(tab)
   }
 
+  // Set current file entry for the active tab
+  const folderContext = tabFolderContexts.value.get(tabId)
+  if (folderContext && tab.imageData?.path) {
+    const fileEntry = folderContext.fileEntries.find(entry => entry.path === tab.imageData.path)
+    currentFileEntry.value = fileEntry || null
+  }
+
   // Preload adjacent images in the new tab's context
   nextTick(() => {
-    const folderContext = tabFolderContexts.value.get(tabId)
-    if (folderContext) {
+    if (folderContext && tab.imageData) {
       preloadAdjacentImagesLazy(tab.imageData, folderContext)
     }
   })
@@ -336,7 +394,12 @@ const loadFolderContextForTab = async (tab: TabData) => {
           const entry = imageFileEntries[i]
           if (entry) {
             adjacentLoadPromises.push(
-              loadImageMetadata(entry.path, folderContext).then(() => {})
+              loadImageMetadata(entry.path, folderContext)
+                .then(() => {})
+                .catch(err => {
+                  // Silently skip corrupted images during preloading
+                  console.warn(`Skipping corrupted image during folder context preload: ${entry.path}`, err)
+                })
             )
           }
         }
@@ -454,7 +517,7 @@ const previousImage = async () => {
 
 // Core navigation function with race condition prevention
 const performNavigation = async (direction: 'next' | 'prev') => {
-  if (!activeTabId.value || !activeImage.value) return
+  if (!activeTabId.value) return
 
   const folderContext = tabFolderContexts.value.get(activeTabId.value)
   if (!folderContext || folderContext.fileEntries.length <= 1) return
@@ -464,9 +527,21 @@ const performNavigation = async (direction: 'next' | 'prev') => {
   const currentSequenceId = ++navigationSequenceId.value
 
   try {
-    // Find current image in file entries
-    const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
-    if (currentIndex === -1) return
+    // Find current file entry index (works even if current image is corrupted)
+    let currentIndex = -1
+
+    // First try to use currentFileEntry (works for both valid and corrupted images)
+    if (currentFileEntry.value) {
+      currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === currentFileEntry.value!.path)
+    } else if (activeImage.value) {
+      // Fallback to activeImage if currentFileEntry is not set
+      currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
+    }
+
+    // If we still can't find current position, default to -1 so navigation starts from beginning
+    if (currentIndex === -1) {
+      currentIndex = direction === 'next' ? -1 : 0
+    }
 
     // Calculate target index based on direction
     let targetIndex: number
@@ -479,7 +554,7 @@ const performNavigation = async (direction: 'next' | 'prev') => {
     const targetEntry = folderContext.fileEntries[targetIndex]
     if (!targetEntry) return
 
-    // Load image metadata if not already loaded
+    // Load image metadata if not already loaded (may return null for corrupted images)
     const targetImageData = await loadImageMetadata(targetEntry.path, folderContext)
 
     // Check if this navigation is still valid (no newer navigation started)
@@ -488,9 +563,11 @@ const performNavigation = async (direction: 'next' | 'prev') => {
       return
     }
 
+    // Update tab with new image or corrupted entry
+    await updateCurrentTabImage(targetImageData, targetEntry)
+
+    // Preload adjacent images for smooth navigation (non-blocking)
     if (targetImageData) {
-      await updateCurrentTabImage(targetImageData)
-      // Preload adjacent images for smooth navigation (non-blocking)
       preloadAdjacentImagesLazy(targetImageData, folderContext).catch(err =>
         console.warn('Preload failed:', err)
       )
@@ -508,20 +585,29 @@ const performNavigation = async (direction: 'next' | 'prev') => {
   }
 }
 
-const updateCurrentTabImage = async (newImageData: ImageData) => {
+const updateCurrentTabImage = async (newImageData: ImageData | null, fileEntry: FileEntry) => {
   if (!activeTabId.value) return
 
   const activeTab = tabs.value.get(activeTabId.value)
   if (!activeTab) return
 
-  // Update the tab with the new image data
-  activeTab.imageData = newImageData
-  activeTab.title = newImageData.name
+  // Update current file entry (works for both valid and corrupted images)
+  currentFileEntry.value = fileEntry
+
+  if (newImageData) {
+    // Valid image - update tab with image data
+    activeTab.imageData = newImageData
+    activeTab.title = newImageData.name
+    console.log(`Navigated to: ${newImageData.name}`)
+  } else {
+    // Corrupted image - clear image data and update tab with file entry info
+    activeTab.imageData = {} as ImageData // Clear the old image data
+    activeTab.title = fileEntry.name
+    console.log(`Navigated to corrupted image: ${fileEntry.name}`)
+  }
 
   // Reset zoom and pan when changing images
   resetImageView()
-
-  console.log(`Navigated to: ${newImageData.name}`)
 }
 
 const openNewImage = () => {
@@ -531,7 +617,7 @@ const openNewImage = () => {
 
 // Enhanced tab management functions
 const openImageInNewTab = async () => {
-  if (!activeImage.value || !activeTabId.value) return
+  if (!activeTabId.value) return
 
   const folderContext = tabFolderContexts.value.get(activeTabId.value)
   if (!folderContext || folderContext.fileEntries.length <= 1) return
@@ -541,16 +627,15 @@ const openImageInNewTab = async () => {
   const nextEntry = folderContext.fileEntries[nextIndex]
   if (!nextEntry) return
 
-  // Load next image metadata
+  // Load next image metadata (may be null if corrupted)
   const nextImageData = await loadImageMetadata(nextEntry.path, folderContext)
-  if (!nextImageData) return
 
-  // Create a new tab for the next image
+  // Create a new tab even if image is corrupted
   const tabId = `tab-${Date.now()}`
   const tab: TabData = {
     id: tabId,
-    title: nextImageData.name,
-    imageData: nextImageData,
+    title: nextEntry.name,
+    imageData: nextImageData || {} as ImageData, // Use empty object if null
     isActive: true, // Switch to the new tab immediately
     order: getNextTabOrder()
   }
@@ -572,7 +657,10 @@ const openImageInNewTab = async () => {
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  console.log(`Opened ${nextImageData.name} in new tab and switched to it`)
+  // Set current file entry for the new tab
+  currentFileEntry.value = nextEntry
+
+  console.log(`Opened ${nextEntry.name} in new tab and switched to it`)
 }
 
 const switchToNextTab = () => {
@@ -1356,6 +1444,29 @@ defineExpose({
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+/* Corrupted Image Placeholder */
+.corrupted-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+}
+
+.corrupted-svg {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  border-radius: 4px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.corrupted-status {
+  color: #ff6b6b !important;
 }
 
 

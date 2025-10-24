@@ -231,23 +231,28 @@ const handleOpenImageRequest = async () => {
           const entry = imageFileEntries[i]
           if (entry) {
             adjacentLoadPromises.push(
-              invoke<any>('read_image_file', { path: entry.path }).then(rawData => {
-                loadedImages.set(entry.path, {
-                  id: rawData.id,
-                  name: rawData.name,
-                  path: rawData.path,
-                  assetUrl: convertFileSrc(rawData.path),
-                  dimensions: rawData.dimensions,
-                  fileSize: rawData.file_size,
-                  lastModified: new Date(rawData.last_modified)
+              invoke<any>('read_image_file', { path: entry.path })
+                .then(rawData => {
+                  loadedImages.set(entry.path, {
+                    id: rawData.id,
+                    name: rawData.name,
+                    path: rawData.path,
+                    assetUrl: convertFileSrc(rawData.path),
+                    dimensions: rawData.dimensions,
+                    fileSize: rawData.file_size,
+                    lastModified: new Date(rawData.last_modified)
+                  })
                 })
-              })
+                .catch(err => {
+                  // Silently skip corrupted images during preloading
+                  console.warn(`Skipping corrupted image during preload: ${entry.path}`, err)
+                })
             )
           }
         }
       }
 
-      // Load adjacent images in parallel
+      // Load adjacent images in parallel (corrupted images will be skipped)
       await Promise.all(adjacentLoadPromises)
 
       // Create folder context
