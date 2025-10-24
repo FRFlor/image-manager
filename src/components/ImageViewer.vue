@@ -140,6 +140,13 @@ const tabFolderContexts = ref<Map<string, FolderContext>>(new Map())
 const managedResources: ManagedResource[] = []
 const preloadedImages = ref<Set<string>>(new Set())
 
+// Navigation state for handling rapid navigation
+const navigationInProgress = ref(false)
+const pendingNavigationDirection = ref<'next' | 'prev' | null>(null)
+const navigationSequenceId = ref(0)
+const lastKeyPressTime = ref(0)
+const KEY_REPEAT_THRESHOLD = 50 // ms - minimum time between key presses to prevent excessive queuing
+
 // Zoom and pan state
 const zoomLevel = ref(1)
 const fitMode = ref<'fit-to-window' | 'actual-size'>('fit-to-window')
@@ -371,50 +378,78 @@ const closeTab = (tabId: string) => {
 }
 
 const nextImage = async () => {
-  if (!activeTabId.value || !activeImage.value) return
-
-  const folderContext = tabFolderContexts.value.get(activeTabId.value)
-  if (!folderContext || folderContext.fileEntries.length <= 1) return
-
-  // Find current image in file entries
-  const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
-  if (currentIndex === -1) return
-
-  // Get next file entry
-  const nextIndex = (currentIndex + 1) % folderContext.fileEntries.length
-  const nextEntry = folderContext.fileEntries[nextIndex]
-  if (!nextEntry) return
-
-  // Load image metadata if not already loaded
-  const nextImageData = await loadImageMetadata(nextEntry.path, folderContext)
-  if (nextImageData) {
-    await updateCurrentTabImage(nextImageData)
-    // Preload adjacent images for smooth navigation
-    preloadAdjacentImagesLazy(nextImageData, folderContext)
+  // If navigation is in progress, queue this navigation
+  if (navigationInProgress.value) {
+    pendingNavigationDirection.value = 'next'
+    return
   }
+
+  await performNavigation('next')
 }
 
 const previousImage = async () => {
+  // If navigation is in progress, queue this navigation
+  if (navigationInProgress.value) {
+    pendingNavigationDirection.value = 'prev'
+    return
+  }
+
+  await performNavigation('prev')
+}
+
+// Core navigation function with race condition prevention
+const performNavigation = async (direction: 'next' | 'prev') => {
   if (!activeTabId.value || !activeImage.value) return
 
   const folderContext = tabFolderContexts.value.get(activeTabId.value)
   if (!folderContext || folderContext.fileEntries.length <= 1) return
 
-  // Find current image in file entries
-  const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
-  if (currentIndex === -1) return
+  // Mark navigation as in progress
+  navigationInProgress.value = true
+  const currentSequenceId = ++navigationSequenceId.value
 
-  // Get previous file entry
-  const prevIndex = currentIndex === 0 ? folderContext.fileEntries.length - 1 : currentIndex - 1
-  const prevEntry = folderContext.fileEntries[prevIndex]
-  if (!prevEntry) return
+  try {
+    // Find current image in file entries
+    const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
+    if (currentIndex === -1) return
 
-  // Load image metadata if not already loaded
-  const prevImageData = await loadImageMetadata(prevEntry.path, folderContext)
-  if (prevImageData) {
-    await updateCurrentTabImage(prevImageData)
-    // Preload adjacent images for smooth navigation
-    preloadAdjacentImagesLazy(prevImageData, folderContext)
+    // Calculate target index based on direction
+    let targetIndex: number
+    if (direction === 'next') {
+      targetIndex = (currentIndex + 1) % folderContext.fileEntries.length
+    } else {
+      targetIndex = currentIndex === 0 ? folderContext.fileEntries.length - 1 : currentIndex - 1
+    }
+
+    const targetEntry = folderContext.fileEntries[targetIndex]
+    if (!targetEntry) return
+
+    // Load image metadata if not already loaded
+    const targetImageData = await loadImageMetadata(targetEntry.path, folderContext)
+
+    // Check if this navigation is still valid (no newer navigation started)
+    if (currentSequenceId !== navigationSequenceId.value) {
+      console.log('Navigation cancelled - newer navigation in progress')
+      return
+    }
+
+    if (targetImageData) {
+      await updateCurrentTabImage(targetImageData)
+      // Preload adjacent images for smooth navigation (non-blocking)
+      preloadAdjacentImagesLazy(targetImageData, folderContext).catch(err =>
+        console.warn('Preload failed:', err)
+      )
+    }
+  } finally {
+    navigationInProgress.value = false
+
+    // If there's a pending navigation, execute it immediately
+    if (pendingNavigationDirection.value) {
+      const nextDirection = pendingNavigationDirection.value
+      pendingNavigationDirection.value = null
+      // Use nextTick to avoid deep recursion
+      nextTick(() => performNavigation(nextDirection))
+    }
   }
 }
 
@@ -823,6 +858,19 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
   if (matchingShortcut) {
     event.preventDefault()
+
+    // Throttle rapid key repeats for navigation actions
+    if (matchingShortcut.action === 'nextImage' || matchingShortcut.action === 'previousImage') {
+      const now = Date.now()
+      const timeSinceLastPress = now - lastKeyPressTime.value
+
+      // If key is being held down (rapid repeat), throttle to avoid queuing too many navigations
+      if (event.repeat && timeSinceLastPress < KEY_REPEAT_THRESHOLD) {
+        return // Skip this repeat event
+      }
+
+      lastKeyPressTime.value = now
+    }
 
     // Execute the action based on the shortcut configuration
     switch (matchingShortcut.action) {
