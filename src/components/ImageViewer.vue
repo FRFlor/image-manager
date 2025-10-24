@@ -1036,8 +1036,10 @@ const restoreFromSession = async (sessionData: SessionData) => {
 
     let activeTabIdToLoad: string | null = null
 
-    // Phase 1: Restore all tabs with minimal loading (just verify files exist)
-    for (const sessionTab of sessionData.tabs) {
+    // Phase 1: Restore all tabs with minimal loading in parallel (just verify files exist)
+    console.log(`Loading metadata for ${sessionData.tabs.length} tabs in parallel...`)
+
+    const tabLoadPromises = sessionData.tabs.map(async (sessionTab) => {
       try {
         const isActiveTab = sessionTab.id === sessionData.activeTabId
 
@@ -1064,18 +1066,29 @@ const restoreFromSession = async (sessionData: SessionData) => {
           isFullyLoaded: false // Mark as not fully loaded yet
         }
 
-        tabs.value.set(sessionTab.id, tab)
-
-        if (isActiveTab) {
-          activeTabIdToLoad = sessionTab.id
-        }
-
-        console.log(`Restored tab (lazy): ${restoredImageData.name}`)
+        return { tab, isActiveTab }
       } catch (error) {
         console.warn(`Failed to restore image: ${sessionTab.imagePath}`, error)
-        // Skip this tab if the image no longer exists
+        // Return null for failed tabs
+        return null
+      }
+    })
+
+    // Wait for all tabs to load in parallel
+    const tabResults = await Promise.all(tabLoadPromises)
+
+    // Add all successfully loaded tabs to the map
+    for (const result of tabResults) {
+      if (result) {
+        tabs.value.set(result.tab.id, result.tab)
+        if (result.isActiveTab) {
+          activeTabIdToLoad = result.tab.id
+        }
+        console.log(`Restored tab (lazy): ${result.tab.title}`)
       }
     }
+
+    console.log(`✅ All ${tabs.value.size} tabs restored in parallel`)
 
     // Phase 2: Fully load only the active tab
     if (activeTabIdToLoad && tabs.value.has(activeTabIdToLoad)) {
