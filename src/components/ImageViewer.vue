@@ -2,7 +2,7 @@
   <div class="image-viewer">
     <!-- Tab Navigation -->
     <div class="tab-bar">
-      <div class="tab-container">
+      <div class="tab-container" ref="tabContainer">
         <div v-for="tab in sortedTabs" :key="tab.id" @click="switchToTab(tab.id)"
           @contextmenu.prevent="showTabContextMenu($event, tab.id)" class="tab"
           :class="{ active: tab.id === activeTabId }">
@@ -163,6 +163,7 @@ const tabs = ref<Map<string, TabData>>(new Map())
 const activeTabId = ref<string | null>(null)
 const currentFolderImages = ref<ImageData[]>([])
 const imageContainer = ref<HTMLElement>()
+const tabContainer = ref<HTMLElement>()
 
 // Lazy loading state
 const tabFolderContexts = ref<Map<string, FolderContext>>(new Map())
@@ -232,6 +233,30 @@ const isImageCorrupted = computed(() => {
   return currentFileEntry.value !== null && activeImage.value !== null && activeImage.value.assetUrl === ''
 })
 
+// Helper function to scroll the active tab into view (centered)
+const scrollActiveTabIntoView = () => {
+  if (!activeTabId.value || !tabContainer.value) return
+
+  // Use nextTick to ensure the DOM has updated with the active class
+  nextTick(() => {
+    const activeTabElement = tabContainer.value?.querySelector('.tab.active') as HTMLElement
+    if (!activeTabElement || !tabContainer.value) return
+
+    const containerWidth = tabContainer.value.offsetWidth
+    const tabLeft = activeTabElement.offsetLeft
+    const tabWidth = activeTabElement.offsetWidth
+
+    // Calculate scroll position to center the active tab
+    const scrollPosition = tabLeft - (containerWidth / 2) + (tabWidth / 2)
+
+    // Smooth scroll to the calculated position
+    tabContainer.value.scrollTo({
+      left: scrollPosition,
+      behavior: 'smooth'
+    })
+  })
+}
+
 // Helper function to load image metadata on-demand
 const loadImageMetadata = async (filePath: string, folderContext: FolderContext): Promise<ImageData | null> => {
   // Check if already loaded in cache
@@ -284,6 +309,9 @@ const openImage = (imageData: ImageData, folderContext: FolderContext) => {
   tabs.value.set(tabId, tab)
   activeTabId.value = tabId
 
+  // Scroll the new tab into view
+  scrollActiveTabIntoView()
+
   // Store folder context for this tab
   tabFolderContexts.value.set(tabId, folderContext)
 
@@ -310,6 +338,9 @@ const switchToTab = async (tabId: string) => {
   tabs.value.forEach(t => { t.isActive = false })
   tab.isActive = true
   activeTabId.value = tabId
+
+  // Scroll the active tab into view (centered)
+  scrollActiveTabIntoView()
 
   // Reset zoom and pan when switching tabs
   resetImageView()
@@ -701,6 +732,9 @@ const openImageInNewTab = async () => {
   tabs.value.set(tabId, tab)
   const oldActiveTabId = activeTabId.value
   activeTabId.value = tabId
+
+  // Scroll the new tab into view
+  scrollActiveTabIntoView()
 
   // Create a NEW folder context for the new tab (deep clone to avoid shared references)
   const currentFolderContext = tabFolderContexts.value.get(oldActiveTabId)
