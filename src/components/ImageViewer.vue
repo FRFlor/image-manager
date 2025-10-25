@@ -17,7 +17,8 @@
         <button @click="toggleTabLayout" class="layout-toggle-btn" :title="`Current layout: ${tabLayoutMode}`">
           <span v-if="tabLayoutMode === 'invisible'">−</span>
           <span v-else-if="tabLayoutMode === 'default'">=</span>
-          <span v-else>≡</span>
+          <span v-else-if="tabLayoutMode === 'expanded'">≡</span>
+          <span v-else>☰</span>
         </button>
         <button @click="openNewImage" class="new-tab-btn" title="Open new image">
           +
@@ -197,7 +198,7 @@ const dragStart = ref({ x: 0, y: 0 })
 const imageElement = ref<HTMLImageElement>()
 
 // Tab layout state
-const tabLayoutMode = ref<'invisible' | 'default' | 'expanded'>('default')
+const tabLayoutMode = ref<'invisible' | 'default' | 'expanded' | 'large'>('default')
 
 
 
@@ -1162,7 +1163,7 @@ const resetImageView = () => {
 
 // Tab layout toggle
 const toggleTabLayout = () => {
-  const modes: Array<'invisible' | 'default' | 'expanded'> = ['invisible', 'default', 'expanded']
+  const modes: Array<'invisible' | 'default' | 'expanded' | 'large'> = ['invisible', 'default', 'expanded', 'large']
   const currentIndex = modes.indexOf(tabLayoutMode.value)
   const nextIndex = (currentIndex + 1) % modes.length
   tabLayoutMode.value = modes[nextIndex]
@@ -1685,6 +1686,32 @@ defineExpose({
 }
 
 .tab-bar.layout-expanded .tab-title {
+  text-align: center;
+  font-size: 12px;
+}
+
+/* Large layout - extra large previews */
+.tab-bar.layout-large {
+  min-height: 180px;
+}
+
+.tab-bar.layout-large .tab {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 180px;
+  max-width: 200px;
+  padding: 12px 8px;
+  gap: 8px;
+}
+
+.tab-bar.layout-large .tab-thumbnail {
+  width: 150px;
+  height: 150px;
+  margin: 0;
+}
+
+.tab-bar.layout-large .tab-title {
   text-align: center;
   font-size: 12px;
 }
