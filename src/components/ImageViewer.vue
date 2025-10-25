@@ -1,14 +1,18 @@
 <template>
-  <div class="image-viewer" :class="'layout-' + tabLayoutMode">
+  <div class="image-viewer" :class="'layout-' + currentLayout">
     <!-- Tree Panel (Left Sidebar) -->
-    <div class="tree-panel" v-if="tabLayoutMode === 'tree-small' || tabLayoutMode === 'tree-large'" :class="{ collapsed: treeCollapsed }">
+    <div class="tree-panel" v-if="layoutPosition === 'tree'" :class="{ collapsed: treeCollapsed }">
       <div class="tree-controls">
         <button @click="toggleTreeCollapse" class="tree-collapse-btn" :title="treeCollapsed ? 'Expand tree' : 'Collapse tree'">
           <span v-if="treeCollapsed">→</span>
           <span v-else>←</span>
         </button>
-        <button v-if="!treeCollapsed" @click="toggleTabLayout" class="layout-toggle-btn" :title="`Current layout: ${tabLayoutMode}`">
-          ▤
+        <button v-if="!treeCollapsed" @click="toggleLayoutPosition" class="layout-toggle-btn" :title="`Layout: ${layoutPosition}`">
+          <span v-if="layoutPosition === 'tree'">▯</span>
+        </button>
+        <button v-if="!treeCollapsed" @click="toggleLayoutSize" class="size-toggle-btn" :title="`Size: ${layoutSize}`">
+          <span v-if="layoutSize === 'small'">S</span>
+          <span v-else>L</span>
         </button>
         <button v-if="!treeCollapsed" @click="openNewImage" class="new-tab-btn" title="Open new image">
           +
@@ -25,8 +29,8 @@
     </div>
 
     <!-- Tab Navigation (Top Bar) -->
-    <div class="tab-bar" :class="'layout-' + tabLayoutMode" v-if="tabLayoutMode === 'top-small' || tabLayoutMode === 'top-large' || tabLayoutMode === 'invisible'">
-      <div class="tab-container" ref="tabContainer" v-show="tabLayoutMode !== 'invisible'">
+    <div class="tab-bar" :class="'layout-' + currentLayout" v-if="layoutPosition === 'top' || layoutPosition === 'invisible'">
+      <div class="tab-container" ref="tabContainer" v-show="layoutPosition !== 'invisible'">
         <div v-for="tab in sortedTabs" :key="tab.id" @click="switchToTab(tab.id)"
           @contextmenu.prevent="showTabContextMenu($event, tab.id)" class="tab"
           :class="{ active: tab.id === activeTabId }">
@@ -38,12 +42,13 @@
         </div>
       </div>
       <div class="tab-controls">
-        <button @click="toggleTabLayout" class="layout-toggle-btn" :title="`Current layout: ${tabLayoutMode}`">
-          <span v-if="tabLayoutMode === 'invisible'">−</span>
-          <span v-else-if="tabLayoutMode === 'top-small'">=</span>
-          <span v-else-if="tabLayoutMode === 'top-large'">☰</span>
-          <span v-else-if="tabLayoutMode === 'tree-small'">▤</span>
-          <span v-else>⊞</span>
+        <button @click="toggleLayoutPosition" class="layout-toggle-btn" :title="`Layout: ${layoutPosition}`">
+          <span v-if="layoutPosition === 'invisible'">✕</span>
+          <span v-else-if="layoutPosition === 'top'">▭</span>
+        </button>
+        <button v-if="layoutPosition !== 'invisible'" @click="toggleLayoutSize" class="size-toggle-btn" :title="`Size: ${layoutSize}`">
+          <span v-if="layoutSize === 'small'">S</span>
+          <span v-else>L</span>
         </button>
         <button @click="openNewImage" class="new-tab-btn" title="Open new image">
           +
@@ -223,8 +228,9 @@ const isDragging = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
 const imageElement = ref<HTMLImageElement>()
 
-// Tab layout state
-const tabLayoutMode = ref<'invisible' | 'top-small' | 'top-large' | 'tree-small' | 'tree-large'>('tree-small')
+// Tab layout state (split into position and size)
+const layoutPosition = ref<'invisible' | 'top' | 'tree'>('tree')
+const layoutSize = ref<'small' | 'large'>('small')
 const treeCollapsed = ref(false)
 
 
@@ -270,6 +276,12 @@ const isImageCorrupted = computed(() => {
   return currentFileEntry.value !== null && activeImage.value !== null && activeImage.value.assetUrl === ''
 })
 
+// Computed property that combines position and size (unless invisible)
+const currentLayout = computed(() => {
+  if (layoutPosition.value === 'invisible') return 'invisible'
+  return `${layoutPosition.value}-${layoutSize.value}` as 'top-small' | 'top-large' | 'tree-small' | 'tree-large'
+})
+
 // Helper function to scroll the active tab into view (centered)
 const scrollActiveTabIntoView = () => {
   if (!activeTabId.value) return
@@ -277,7 +289,7 @@ const scrollActiveTabIntoView = () => {
   // Use nextTick to ensure the DOM has updated with the active class
   nextTick(() => {
     // Handle tree modes (vertical scrolling)
-    if ((tabLayoutMode.value === 'tree-small' || tabLayoutMode.value === 'tree-large') && treeItemsContainer.value) {
+    if (layoutPosition.value === 'tree' && treeItemsContainer.value) {
       const activeTreeItem = treeItemsContainer.value.querySelector('.tree-item.active') as HTMLElement
       if (!activeTreeItem) return
 
@@ -1209,13 +1221,19 @@ const resetImageView = () => {
   panOffset.value = { x: 0, y: 0 }
 }
 
-// Tab layout toggle
-const toggleTabLayout = () => {
-  const modes: Array<'invisible' | 'top-small' | 'top-large' | 'tree-small' | 'tree-large'> = ['invisible', 'top-small', 'top-large', 'tree-small', 'tree-large']
-  const currentIndex = modes.indexOf(tabLayoutMode.value)
-  const nextIndex = (currentIndex + 1) % modes.length
-  tabLayoutMode.value = modes[nextIndex]
-  console.log(`Tab layout changed to: ${tabLayoutMode.value}`)
+// Toggle layout position (invisible / top / tree)
+const toggleLayoutPosition = () => {
+  const positions: Array<'invisible' | 'top' | 'tree'> = ['invisible', 'top', 'tree']
+  const currentIndex = positions.indexOf(layoutPosition.value)
+  const nextIndex = (currentIndex + 1) % positions.length
+  layoutPosition.value = positions[nextIndex]
+  console.log(`Layout position changed to: ${layoutPosition.value}`)
+}
+
+// Toggle layout size (small / large)
+const toggleLayoutSize = () => {
+  layoutSize.value = layoutSize.value === 'small' ? 'large' : 'small'
+  console.log(`Layout size changed to: ${layoutSize.value}`)
 }
 
 // Toggle tree panel collapsed state
@@ -1822,7 +1840,8 @@ defineExpose({
 }
 
 .new-tab-btn,
-.layout-toggle-btn {
+.layout-toggle-btn,
+.size-toggle-btn {
   background: none;
   border: none;
   color: #999;
@@ -1834,9 +1853,15 @@ defineExpose({
 }
 
 .new-tab-btn:hover,
-.layout-toggle-btn:hover {
+.layout-toggle-btn:hover,
+.size-toggle-btn:hover {
   background: #3d3d3d;
   color: white;
+}
+
+.size-toggle-btn {
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* Style for invisible mode controls */
