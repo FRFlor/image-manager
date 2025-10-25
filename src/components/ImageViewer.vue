@@ -1216,13 +1216,13 @@ const moveTabRight = (tabId: string|null = null) => {
   if (!targetTab) return
 
   const allTabs = sortedTabs.value
-  const currentIndex = allTabs.findIndex(tab => tab.id === activeTabId.value)
+  const currentIndex = allTabs.findIndex(tab => tab.id === targetTabId)
   if (currentIndex === -1 || currentIndex >= allTabs.length - 1) return
 
   // Case C: Grouped tab is active - move within group only
   if (targetTab.groupId) {
     const groupTabs = allTabs.filter(tab => tab.groupId === targetTab.groupId)
-    const groupIndex = groupTabs.findIndex(tab => tab.id === activeTabId.value)
+    const groupIndex = groupTabs.findIndex(tab => tab.id === targetTabId)
 
     console.log(`Moving tab within group: groupIndex=${groupIndex}, groupSize=${groupTabs.length}`)
 
@@ -1285,13 +1285,13 @@ const moveTabLeft = (tabId: string|null = null) => {
   if (!targetTab) return
 
   const allTabs = sortedTabs.value
-  const currentIndex = allTabs.findIndex(tab => tab.id === activeTabId.value)
+  const currentIndex = allTabs.findIndex(tab => tab.id === targetTabId)
   if (currentIndex === -1 || currentIndex <= 0) return
 
   // Case C: Grouped tab is active - move within group only
   if (targetTab.groupId) {
     const groupTabs = allTabs.filter(tab => tab.groupId === targetTab.groupId)
-    const groupIndex = groupTabs.findIndex(tab => tab.id === activeTabId.value)
+    const groupIndex = groupTabs.findIndex(tab => tab.id === targetTabId)
 
     console.log(`Moving tab within group: groupIndex=${groupIndex}, groupSize=${groupTabs.length}`)
 
@@ -1497,7 +1497,21 @@ const getGroupName = (groupId: string): string => {
 
 const getGroupTabIds = (groupId: string): string[] => {
   const group = tabGroups.value.get(groupId)
-  return group ? group.tabIds : []
+  if (!group) return []
+
+  // Get tabs and sort by order property to match visual tab order
+  const groupTabs: TabData[] = []
+  for (const tabId of group.tabIds) {
+    const tab = tabs.value.get(tabId)
+    if (tab) {
+      groupTabs.push(tab)
+    }
+  }
+
+  // Sort by order property (same as sortedTabs)
+  groupTabs.sort((a, b) => a.order - b.order)
+
+  return groupTabs.map(tab => tab.id)
 }
 
 const selectGroupHeader = (groupId: string): void => {
