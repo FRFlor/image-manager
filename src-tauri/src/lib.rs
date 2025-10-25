@@ -49,9 +49,23 @@ pub struct ImageDimensions {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct TabGroup {
+    id: String,
+    name: String,
+    color: String, // "blue" or "orange"
+    order: u32,
+    #[serde(rename = "tabIds")]
+    tab_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    collapsed: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SessionData {
     name: Option<String>,
     tabs: Vec<SessionTab>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    groups: Option<Vec<TabGroup>>,
     #[serde(rename = "activeTabId")]
     active_tab_id: Option<String>,
     #[serde(rename = "createdAt")]
@@ -70,6 +84,8 @@ pub struct SessionTab {
     #[serde(rename = "imagePath")]
     image_path: String,
     order: u32,
+    #[serde(rename = "groupId", skip_serializing_if = "Option::is_none")]
+    group_id: Option<String>,
     #[serde(rename = "zoomLevel", skip_serializing_if = "Option::is_none")]
     zoom_level: Option<f64>,
     #[serde(rename = "fitMode", skip_serializing_if = "Option::is_none")]

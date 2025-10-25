@@ -104,40 +104,66 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Close current tab'
   },
 
-  // Tab Reordering
+  // Tab Reordering (Smart: swap with tabs/groups, or move within group)
   {
     key: 'ArrowRight',
     modifiers: { alt: true },
     action: 'moveTabRight',
-    description: 'Move current tab to the right'
+    description: 'Move tab/group right (smart reorder)'
   },
   {
     key: 'ArrowLeft',
     modifiers: { alt: true },
     action: 'moveTabLeft',
-    description: 'Move current tab to the left'
+    description: 'Move tab/group left (smart reorder)'
   },
   {
     key: 'ArrowDown',
     action: 'moveTabRight',
-    description: 'Move current tab to the right'
+    description: 'Move tab/group right (smart reorder)'
   },
   {
     key: 'ArrowUp',
     action: 'moveTabLeft',
-    description: 'Move current tab to the left'
+    description: 'Move tab/group left (smart reorder)'
   },
   {
     key: 'd',
     modifiers: { alt: true },
     action: 'moveTabRight',
-    description: 'Move current tab to the right (gaming style)'
+    description: 'Move tab/group right (gaming style)'
   },
   {
     key: 'a',
     modifiers: { alt: true },
     action: 'moveTabLeft',
-    description: 'Move current tab to the left (gaming style)'
+    description: 'Move tab/group left (gaming style)'
+  },
+
+  // Tab Grouping (Ctrl+Left/Right to join tabs into groups)
+  {
+    key: 'ArrowLeft',
+    modifiers: { ctrl: true },
+    action: 'joinWithLeft',
+    description: 'Join with left tab/group or merge into group'
+  },
+  {
+    key: 'ArrowRight',
+    modifiers: { ctrl: true },
+    action: 'joinWithRight',
+    description: 'Join with right tab/group or merge into group'
+  },
+  {
+    key: 'a',
+    modifiers: { ctrl: true },
+    action: 'joinWithLeft',
+    description: 'Join with left tab/group (gaming style)'
+  },
+  {
+    key: 'd',
+    modifiers: { ctrl: true },
+    action: 'joinWithRight',
+    description: 'Join with right tab/group (gaming style)'
   },
 
   // Zoom and Pan Controls (Windows/Linux)

@@ -58,6 +58,18 @@ export interface VirtualFolderContext extends FolderContext {
 }
 
 /**
+ * Represents a tab group for organizing multiple tabs
+ */
+export interface TabGroup {
+  id: string
+  name: string // User-editable group name
+  color: 'blue' | 'orange' // For top layout border colors
+  order: number // Group ordering position
+  tabIds: string[] // IDs of tabs in this group (ordered)
+  collapsed?: boolean // Whether group is collapsed in tree view
+}
+
+/**
  * Represents a tab containing an image
  */
 export interface TabData {
@@ -67,6 +79,7 @@ export interface TabData {
   isActive: boolean
   order: number // For drag-and-drop reordering
   isFullyLoaded?: boolean // Tracks if folder context and adjacent images are loaded
+  groupId?: string // Optional reference to parent group
   zoomLevel?: number // Zoom level for this tab
   fitMode?: 'fit-to-window' | 'actual-size' // Fit mode for this tab
   panOffset?: { x: number; y: number } // Pan offset for this tab
@@ -81,9 +94,18 @@ export interface SessionData {
     id: string
     imagePath: string
     order: number
+    groupId?: string
     zoomLevel?: number
     fitMode?: 'fit-to-window' | 'actual-size'
     panOffset?: { x: number; y: number }
+  }>
+  groups?: Array<{
+    id: string
+    name: string
+    color: 'blue' | 'orange'
+    order: number
+    tabIds: string[]
+    collapsed?: boolean
   }>
   activeTabId: string | null
   createdAt: string // Use string for JSON serialization
