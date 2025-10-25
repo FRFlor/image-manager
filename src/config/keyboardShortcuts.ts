@@ -172,12 +172,12 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Join with right tab/group (gaming style)'
   },
   {
-    key: '<',
+    key: ',', // <
     action: 'joinWithLeft',
     description: 'Join with left tab/group'
   },
   {
-    key: '>',
+    key: '.', // >
     action: 'joinWithRight',
     description: 'Join with right tab/group'
   },
