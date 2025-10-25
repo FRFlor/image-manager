@@ -1692,22 +1692,22 @@ defineExpose({
 
 /* Large layout - extra large previews */
 .tab-bar.layout-large {
-  min-height: 180px;
+  min-height: 230px;
 }
 
 .tab-bar.layout-large .tab {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 180px;
-  max-width: 200px;
+  min-width: 220px;
+  max-width: 240px;
   padding: 12px 8px;
   gap: 8px;
 }
 
 .tab-bar.layout-large .tab-thumbnail {
-  width: 150px;
-  height: 150px;
+  width: 200px;
+  height: 200px;
   margin: 0;
 }
 
