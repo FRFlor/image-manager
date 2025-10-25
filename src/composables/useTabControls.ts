@@ -19,6 +19,11 @@ const contextMenuVisible = ref(false)
 const contextMenuPosition = ref({ x: 0, y: 0 })
 const contextMenuTabId = ref<string | null>(null)
 
+// Tab layout state (split into position and size)
+const layoutPosition = ref<'invisible' | 'top' | 'tree'>('tree')
+const layoutSize = ref<'small' | 'large'>('small')
+const treeCollapsed = ref(false)
+
 
 export function useTabControls() {
 
@@ -851,6 +856,32 @@ export function useTabControls() {
     nextGroupColorIndex = index
   }
 
+
+
+  // Tab Layout
+  // Toggle layout position (invisible / top / tree)
+  const toggleLayoutPosition = () => {
+    const positions: Array<'invisible' | 'top' | 'tree'> = ['invisible', 'top', 'tree']
+    const currentIndex = positions.indexOf(layoutPosition.value)
+    const nextIndex = (currentIndex + 1) % positions.length
+    layoutPosition.value = positions[nextIndex] as 'invisible' | 'top' | 'tree'
+    console.log(`Layout position changed to: ${layoutPosition.value}`)
+  }
+
+// Toggle layout size (small / large)
+  const toggleLayoutSize = () => {
+    layoutSize.value = layoutSize.value === 'small' ? 'large' : 'small'
+    console.log(`Layout size changed to: ${layoutSize.value}`)
+  }
+
+// Toggle tree panel collapsed state
+  const toggleTreeCollapse = () => {
+    treeCollapsed.value = !treeCollapsed.value
+    console.log(`Tree ${treeCollapsed.value ? 'collapsed' : 'expanded'}`)
+  }
+
+
+
   return {
     // State
     tabs,
@@ -897,6 +928,15 @@ export function useTabControls() {
     joinWithLeft,
     joinWithRight,
     setNextGroupColorIndex,
+
+
+    // Tab Layout,
+    layoutPosition,
+    layoutSize,
+    treeCollapsed,
+    toggleLayoutPosition,
+    toggleLayoutSize,
+    toggleTreeCollapse,
 
     // Context menu
     showTabContextMenu,

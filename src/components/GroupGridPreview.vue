@@ -32,7 +32,7 @@
 
     <div class="grid-container">
       <div
-        v-for="(image, index) in images"
+        v-for="image in images"
         :key="image.id"
         class="grid-item"
         :class="{ highlighted: selectedImageId === image.id }"
