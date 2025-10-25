@@ -2010,6 +2010,8 @@ const handleKeyDown = (event: KeyboardEvent) => {
   }
 
   // Find matching shortcut from configuration
+  console.log(`Keyboard event:`, {event})
+
   const matchingShortcut = KEYBOARD_SHORTCUTS.find(shortcut => matchesShortcut(event, shortcut))
 
   if (matchingShortcut) {
