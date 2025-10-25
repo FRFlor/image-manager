@@ -1,8 +1,8 @@
 <template>
   <div class="image-viewer">
     <!-- Tab Navigation -->
-    <div class="tab-bar">
-      <div class="tab-container" ref="tabContainer">
+    <div class="tab-bar" :class="'layout-' + tabLayoutMode">
+      <div class="tab-container" ref="tabContainer" v-show="tabLayoutMode !== 'invisible'">
         <div v-for="tab in sortedTabs" :key="tab.id" @click="switchToTab(tab.id)"
           @contextmenu.prevent="showTabContextMenu($event, tab.id)" class="tab"
           :class="{ active: tab.id === activeTabId }">
@@ -14,6 +14,11 @@
         </div>
       </div>
       <div class="tab-controls">
+        <button @click="toggleTabLayout" class="layout-toggle-btn" :title="`Current layout: ${tabLayoutMode}`">
+          <span v-if="tabLayoutMode === 'invisible'">−</span>
+          <span v-else-if="tabLayoutMode === 'default'">=</span>
+          <span v-else>≡</span>
+        </button>
         <button @click="openNewImage" class="new-tab-btn" title="Open new image">
           +
         </button>
@@ -190,6 +195,9 @@ const panOffset = ref({ x: 0, y: 0 })
 const isDragging = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
 const imageElement = ref<HTMLImageElement>()
+
+// Tab layout state
+const tabLayoutMode = ref<'invisible' | 'default' | 'expanded'>('default')
 
 
 
@@ -1152,6 +1160,15 @@ const resetImageView = () => {
   panOffset.value = { x: 0, y: 0 }
 }
 
+// Tab layout toggle
+const toggleTabLayout = () => {
+  const modes: Array<'invisible' | 'default' | 'expanded'> = ['invisible', 'default', 'expanded']
+  const currentIndex = modes.indexOf(tabLayoutMode.value)
+  const nextIndex = (currentIndex + 1) % modes.length
+  tabLayoutMode.value = modes[nextIndex]
+  console.log(`Tab layout changed to: ${tabLayoutMode.value}`)
+}
+
 
 
 
@@ -1528,6 +1545,17 @@ defineExpose({
   flex-shrink: 0;
 }
 
+/* Invisible layout - floating controls only */
+.tab-bar.layout-invisible {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 10;
+  background: transparent;
+  border-bottom: none;
+  width: auto;
+}
+
 .tab-container {
   display: flex;
   flex: 1;
@@ -1609,7 +1637,8 @@ defineExpose({
   border-left: 1px solid #404040;
 }
 
-.new-tab-btn {
+.new-tab-btn,
+.layout-toggle-btn {
   background: none;
   border: none;
   color: #999;
@@ -1620,9 +1649,44 @@ defineExpose({
   transition: all 0.2s;
 }
 
-.new-tab-btn:hover {
+.new-tab-btn:hover,
+.layout-toggle-btn:hover {
   background: #3d3d3d;
   color: white;
+}
+
+/* Style for invisible mode controls */
+.tab-bar.layout-invisible .tab-controls {
+  background: rgba(45, 45, 45, 0.9);
+  border-radius: 6px;
+  border: 1px solid #404040;
+  backdrop-filter: blur(10px);
+}
+
+/* Expanded layout - large previews */
+.tab-bar.layout-expanded {
+  min-height: 130px;
+}
+
+.tab-bar.layout-expanded .tab {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 140px;
+  max-width: 160px;
+  padding: 12px 8px;
+  gap: 8px;
+}
+
+.tab-bar.layout-expanded .tab-thumbnail {
+  width: 100px;
+  height: 100px;
+  margin: 0;
+}
+
+.tab-bar.layout-expanded .tab-title {
+  text-align: center;
+  font-size: 12px;
 }
 
 .image-display {
