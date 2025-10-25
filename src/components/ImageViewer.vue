@@ -6,6 +6,7 @@
         <div v-for="tab in sortedTabs" :key="tab.id" @click="switchToTab(tab.id)"
           @contextmenu.prevent="showTabContextMenu($event, tab.id)" class="tab"
           :class="{ active: tab.id === activeTabId }">
+          <img v-if="tab.imageData.assetUrl" :src="tab.imageData.assetUrl" :alt="tab.title" class="tab-thumbnail" />
           <span class="tab-title">{{ tab.title }}</span>
           <button @click.stop="closeTab(tab.id)" class="tab-close" :title="`Close ${tab.title}`">
             ×
@@ -1563,7 +1564,14 @@ defineExpose({
   border-bottom: 2px solid #007bff;
 }
 
-
+.tab-thumbnail {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+  display: block;
+}
 
 .tab-title {
   flex: 1;
