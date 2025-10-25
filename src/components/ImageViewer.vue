@@ -45,6 +45,9 @@
             }">
             <img v-if="item.tab!.imageData.assetUrl" :src="item.tab!.imageData.assetUrl" :alt="item.tab!.title" class="tree-item-thumbnail" />
             <span v-if="!treeCollapsed" class="tree-item-title">{{ item.tab!.title }}</span>
+            <button v-if="!treeCollapsed" @click.stop="closeTab(item.tab!.id)" class="tree-item-close" :title="`Close ${item.tab!.title}`">
+              ×
+            </button>
           </div>
         </template>
       </div>
@@ -2551,6 +2554,29 @@ defineExpose({
   text-overflow: ellipsis;
   font-size: 14px;
   color: white;
+}
+
+.tree-item-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
+  transition: all 0.2s;
+  opacity: 0;
+}
+
+.tree-item:hover .tree-item-close {
+  opacity: 1;
+}
+
+.tree-item-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ff6b6b;
 }
 
 /* Group Header in Tree View */

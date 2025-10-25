@@ -96,7 +96,13 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     key: 'w',
     modifiers: { ctrl: true },
     action: 'closeCurrentTab',
-    description: 'Close current tab'
+    description: 'Close current tab (Ctrl+W)'
+  },
+  {
+    key: 'w',
+    modifiers: { meta: true },
+    action: 'closeCurrentTab',
+    description: 'Close current tab (Cmd+W)'
   },
   {
     key: 'Escape',
