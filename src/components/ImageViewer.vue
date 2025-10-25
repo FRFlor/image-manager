@@ -1426,6 +1426,11 @@ const restoreFromSession = async (sessionData: SessionData) => {
 
     console.log(`⚡ Session restored FAST with ${tabs.value.size} tabs (minimal loading, no preload)`)
 
+    // Scroll the active tab into view after restoration
+    if (activeTabIdToLoad) {
+      scrollActiveTabIntoView()
+    }
+
     // Phase 3: Background load other tabs and preload - FULLY NON-BLOCKING
     // This happens after the UI is already responsive
     if (activeTabIdToLoad) {
