@@ -104,15 +104,17 @@ const handleImageError = (event: Event) => {
 .grid-container {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1rem;
+  gap: 3px;
   padding: 2rem;
   overflow-y: auto;
   flex: 1;
+  align-content: start;
 }
 
 .grid-item {
   position: relative;
-  aspect-ratio: 1;
+  width: 100%;
+  height: 200px;
   background: #252525;
   border-radius: 8px;
   overflow: hidden;
