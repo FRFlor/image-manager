@@ -67,6 +67,9 @@ export interface TabData {
   isActive: boolean
   order: number // For drag-and-drop reordering
   isFullyLoaded?: boolean // Tracks if folder context and adjacent images are loaded
+  zoomLevel?: number // Zoom level for this tab
+  fitMode?: 'fit-to-window' | 'actual-size' // Fit mode for this tab
+  panOffset?: { x: number; y: number } // Pan offset for this tab
 }
 
 /**
@@ -78,6 +81,9 @@ export interface SessionData {
     id: string
     imagePath: string
     order: number
+    zoomLevel?: number
+    fitMode?: 'fit-to-window' | 'actual-size'
+    panOffset?: { x: number; y: number }
   }>
   activeTabId: string | null
   createdAt: string // Use string for JSON serialization

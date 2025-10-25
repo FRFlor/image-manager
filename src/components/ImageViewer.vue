@@ -404,6 +404,16 @@ const switchToTab = async (tabId: string) => {
   const tab = tabs.value.get(tabId)
   if (!tab) return
 
+  // Save current tab's zoom/pan state before switching
+  if (activeTabId.value) {
+    const currentTab = tabs.value.get(activeTabId.value)
+    if (currentTab) {
+      currentTab.zoomLevel = zoomLevel.value
+      currentTab.fitMode = fitMode.value
+      currentTab.panOffset = { ...panOffset.value }
+    }
+  }
+
   // Update active states
   tabs.value.forEach(t => { t.isActive = false })
   tab.isActive = true
@@ -412,8 +422,10 @@ const switchToTab = async (tabId: string) => {
   // Scroll the active tab into view (centered)
   scrollActiveTabIntoView()
 
-  // Reset zoom and pan when switching tabs
-  resetImageView()
+  // Restore zoom and pan state for the new tab
+  zoomLevel.value = tab.zoomLevel ?? 1
+  fitMode.value = tab.fitMode ?? 'fit-to-window'
+  panOffset.value = tab.panOffset ?? { x: 0, y: 0 }
 
   // Load folder context for this tab if needed (lazy loading)
   if (!tab.isFullyLoaded) {
@@ -723,6 +735,11 @@ const updateCurrentTabImage = async (newImageData: ImageData | null, fileEntry: 
 
   const activeTab = tabs.value.get(activeTabId.value)
   if (!activeTab) return
+
+  // Save current zoom/pan state before changing images
+  activeTab.zoomLevel = zoomLevel.value
+  activeTab.fitMode = fitMode.value
+  activeTab.panOffset = { ...panOffset.value }
 
   // Update current file entry (works for both valid and corrupted images)
   currentFileEntry.value = fileEntry
@@ -1354,11 +1371,24 @@ onUnmounted(() => {
 
 // Session management methods
 const createSessionData = (): SessionData => {
+  // Save current tab's zoom/pan state before creating session
+  if (activeTabId.value) {
+    const currentTab = tabs.value.get(activeTabId.value)
+    if (currentTab) {
+      currentTab.zoomLevel = zoomLevel.value
+      currentTab.fitMode = fitMode.value
+      currentTab.panOffset = { ...panOffset.value }
+    }
+  }
+
   const tabArray = sortedTabs.value
   const sessionTabs = tabArray.map(tab => ({
     id: tab.id,
     imagePath: tab.imageData.path,
-    order: tab.order
+    order: tab.order,
+    zoomLevel: tab.zoomLevel,
+    fitMode: tab.fitMode,
+    panOffset: tab.panOffset
   }))
 
   return {
@@ -1401,14 +1431,17 @@ const restoreFromSession = async (sessionData: SessionData) => {
           lastModified: new Date(imageData.last_modified)
         }
 
-        // Create tab with restored data
+        // Create tab with restored data including zoom/pan state
         const tab: TabData = {
           id: sessionTab.id,
           title: restoredImageData.name,
           imageData: restoredImageData,
           isActive: isActiveTab,
           order: sessionTab.order,
-          isFullyLoaded: false // Mark as not fully loaded yet
+          isFullyLoaded: false, // Mark as not fully loaded yet
+          zoomLevel: sessionTab.zoomLevel,
+          fitMode: sessionTab.fitMode,
+          panOffset: sessionTab.panOffset
         }
 
         return { tab, isActiveTab }
@@ -1441,6 +1474,11 @@ const restoreFromSession = async (sessionData: SessionData) => {
       const activeTab = tabs.value.get(activeTabIdToLoad)
       if (activeTab) {
         activeTab.isActive = true
+
+        // Restore zoom/pan state for the active tab
+        zoomLevel.value = activeTab.zoomLevel ?? 1
+        fitMode.value = activeTab.fitMode ?? 'fit-to-window'
+        panOffset.value = activeTab.panOffset ?? { x: 0, y: 0 }
 
         // CRITICAL: Only load folder context WITHOUT preloading adjacent images
         // This makes session restore much faster on network drives
@@ -1492,6 +1530,12 @@ const restoreFromSession = async (sessionData: SessionData) => {
         firstTab.isActive = true
         firstTab.isFullyLoaded = true
         activeTabIdToLoad = firstTab.id
+
+        // Restore zoom/pan state for the first tab
+        zoomLevel.value = firstTab.zoomLevel ?? 1
+        fitMode.value = firstTab.fitMode ?? 'fit-to-window'
+        panOffset.value = firstTab.panOffset ?? { x: 0, y: 0 }
+
         console.log(`✅ First tab activated (deferred loading): ${firstTab.title}`)
       }
     }

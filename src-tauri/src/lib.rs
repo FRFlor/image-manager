@@ -59,11 +59,23 @@ pub struct SessionData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct PanOffset {
+    x: f64,
+    y: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SessionTab {
     id: String,
     #[serde(rename = "imagePath")]
     image_path: String,
     order: u32,
+    #[serde(rename = "zoomLevel", skip_serializing_if = "Option::is_none")]
+    zoom_level: Option<f64>,
+    #[serde(rename = "fitMode", skip_serializing_if = "Option::is_none")]
+    fit_mode: Option<String>,
+    #[serde(rename = "panOffset", skip_serializing_if = "Option::is_none")]
+    pan_offset: Option<PanOffset>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
