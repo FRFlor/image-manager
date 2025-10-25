@@ -118,6 +118,16 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Move current tab to the left'
   },
   {
+    key: 'ArrowDown',
+    action: 'moveTabRight',
+    description: 'Move current tab to the right'
+  },
+  {
+    key: 'ArrowUp',
+    action: 'moveTabLeft',
+    description: 'Move current tab to the left'
+  },
+  {
     key: 'd',
     modifiers: { alt: true },
     action: 'moveTabRight',
