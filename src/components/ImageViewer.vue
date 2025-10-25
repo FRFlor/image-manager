@@ -1,12 +1,16 @@
 <template>
   <div class="image-viewer" :class="'layout-' + tabLayoutMode">
     <!-- Tree Panel (Left Sidebar) -->
-    <div class="tree-panel" v-if="tabLayoutMode === 'tree'">
+    <div class="tree-panel" v-if="tabLayoutMode === 'tree'" :class="{ collapsed: treeCollapsed }">
       <div class="tree-controls">
-        <button @click="toggleTabLayout" class="layout-toggle-btn" :title="`Current layout: ${tabLayoutMode}`">
+        <button @click="toggleTreeCollapse" class="tree-collapse-btn" :title="treeCollapsed ? 'Expand tree' : 'Collapse tree'">
+          <span v-if="treeCollapsed">→</span>
+          <span v-else>←</span>
+        </button>
+        <button v-if="!treeCollapsed" @click="toggleTabLayout" class="layout-toggle-btn" :title="`Current layout: ${tabLayoutMode}`">
           ▤
         </button>
-        <button @click="openNewImage" class="new-tab-btn" title="Open new image">
+        <button v-if="!treeCollapsed" @click="openNewImage" class="new-tab-btn" title="Open new image">
           +
         </button>
       </div>
@@ -15,7 +19,7 @@
           @contextmenu.prevent="showTabContextMenu($event, tab.id)" class="tree-item"
           :class="{ active: tab.id === activeTabId }">
           <img v-if="tab.imageData.assetUrl" :src="tab.imageData.assetUrl" :alt="tab.title" class="tree-item-thumbnail" />
-          <span class="tree-item-title">{{ tab.title }}</span>
+          <span v-if="!treeCollapsed" class="tree-item-title">{{ tab.title }}</span>
         </div>
       </div>
     </div>
@@ -36,7 +40,7 @@
       <div class="tab-controls">
         <button @click="toggleTabLayout" class="layout-toggle-btn" :title="`Current layout: ${tabLayoutMode}`">
           <span v-if="tabLayoutMode === 'invisible'">−</span>
-          <span v-else-if="tabLayoutMode === 'default'">=</span>
+          <span v-else-if="tabLayoutMode === 'small'">=</span>
           <span v-else-if="tabLayoutMode === 'expanded'">≡</span>
           <span v-else-if="tabLayoutMode === 'large'">☰</span>
           <span v-else>▤</span>
@@ -220,7 +224,8 @@ const dragStart = ref({ x: 0, y: 0 })
 const imageElement = ref<HTMLImageElement>()
 
 // Tab layout state
-const tabLayoutMode = ref<'invisible' | 'default' | 'expanded' | 'large' | 'tree'>('default')
+const tabLayoutMode = ref<'invisible' | 'small' | 'expanded' | 'large' | 'tree'>('tree')
+const treeCollapsed = ref(false)
 
 
 
@@ -1206,11 +1211,17 @@ const resetImageView = () => {
 
 // Tab layout toggle
 const toggleTabLayout = () => {
-  const modes: Array<'invisible' | 'default' | 'expanded' | 'large' | 'tree'> = ['invisible', 'default', 'expanded', 'large', 'tree']
+  const modes: Array<'invisible' | 'small' | 'expanded' | 'large' | 'tree'> = ['invisible', 'small', 'expanded', 'large', 'tree']
   const currentIndex = modes.indexOf(tabLayoutMode.value)
   const nextIndex = (currentIndex + 1) % modes.length
   tabLayoutMode.value = modes[nextIndex]
   console.log(`Tab layout changed to: ${tabLayoutMode.value}`)
+}
+
+// Toggle tree panel collapsed state
+const toggleTreeCollapse = () => {
+  treeCollapsed.value = !treeCollapsed.value
+  console.log(`Tree ${treeCollapsed.value ? 'collapsed' : 'expanded'}`)
 }
 
 
@@ -1602,6 +1613,14 @@ defineExpose({
   background: #2d2d2d;
   border-right: 1px solid #404040;
   flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+/* Tree Panel - Collapsed State */
+.tree-panel.collapsed {
+  min-width: 60px;
+  max-width: 60px;
+  width: 60px;
 }
 
 .tree-controls {
@@ -1611,6 +1630,23 @@ defineExpose({
   padding: 8px;
   border-bottom: 1px solid #404040;
   background: #2d2d2d;
+}
+
+.tree-collapse-btn {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.tree-collapse-btn:hover {
+  background: #3d3d3d;
+  color: white;
 }
 
 .tree-items {
@@ -1631,6 +1667,12 @@ defineExpose({
   white-space: nowrap;
 }
 
+/* Tree Item - Collapsed State (center thumbnails) */
+.tree-panel.collapsed .tree-item {
+  justify-content: center;
+  padding: 8px;
+}
+
 .tree-item:hover {
   background: #3d3d3d;
 }
@@ -1639,6 +1681,11 @@ defineExpose({
   background: #1a1a1a;
   border-left: 3px solid #007bff;
   padding-left: 9px; /* Compensate for border */
+}
+
+/* Adjust padding for collapsed active items */
+.tree-panel.collapsed .tree-item.active {
+  padding-left: 5px; /* Less compensation needed when centered */
 }
 
 .tree-item-thumbnail {
