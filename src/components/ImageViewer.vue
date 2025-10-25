@@ -23,14 +23,18 @@
           <!-- Group Header -->
           <div
             v-if="item.type === 'group'"
-            @click="selectGroupHeader(item.groupId!)"
             class="tree-group-header"
             :class="{
               active: selectedGroupId === item.groupId,
               'group-blue': getGroupColor(item.groupId!) === 'blue',
-              'group-orange': getGroupColor(item.groupId!) === 'orange'
+              'group-orange': getGroupColor(item.groupId!) === 'orange',
+              collapsed: collapsedGroupIds.has(item.groupId!)
             }">
-            <span v-if="!treeCollapsed" class="group-header-title">{{ getGroupName(item.groupId!) }}</span>
+            <button @click.stop="toggleGroupCollapse(item.groupId!)" class="group-collapse-btn" :title="collapsedGroupIds.has(item.groupId!) ? 'Expand group' : 'Collapse group'">
+              <span v-if="collapsedGroupIds.has(item.groupId!)">▶</span>
+              <span v-else>▼</span>
+            </button>
+            <span v-if="!treeCollapsed" @click="selectGroupHeader(item.groupId!)" class="group-header-title">{{ getGroupName(item.groupId!) }}</span>
             <span v-else class="group-header-indicator"></span>
           </div>
           <!-- Tab Item -->
@@ -302,6 +306,7 @@ const treeCollapsed = ref(false)
 // Tab groups state
 const tabGroups = ref<Map<string, TabGroup>>(new Map())
 const selectedGroupId = ref<string | null>(null) // For group header selection in tree view
+const collapsedGroupIds = ref<Set<string>>(new Set()) // Track which groups are collapsed
 let nextGroupColorIndex = 0 // Alternates between blue and orange
 
 // Computed properties
@@ -351,8 +356,10 @@ const treeViewItems = computed((): TreeViewItem[] => {
       items.push({ type: 'group', groupId: tab.groupId })
       processedGroups.add(tab.groupId)
     }
-    // Add the tab
-    items.push({ type: 'tab', tab })
+    // Add the tab only if its group is not collapsed (or if it has no group)
+    if (!tab.groupId || !collapsedGroupIds.value.has(tab.groupId)) {
+      items.push({ type: 'tab', tab })
+    }
   }
 
   return items
@@ -2075,8 +2082,16 @@ const toggleTreeCollapse = () => {
   console.log(`Tree ${treeCollapsed.value ? 'collapsed' : 'expanded'}`)
 }
 
-
-
+// Toggle group collapsed state
+const toggleGroupCollapse = (groupId: string) => {
+  if (collapsedGroupIds.value.has(groupId)) {
+    collapsedGroupIds.value.delete(groupId)
+    console.log(`Group ${groupId} expanded`)
+  } else {
+    collapsedGroupIds.value.add(groupId)
+    console.log(`Group ${groupId} collapsed`)
+  }
+}
 
 
 // Enhanced keyboard navigation using configuration
@@ -2701,9 +2716,34 @@ defineExpose({
   background: #2d2215;
 }
 
+.group-collapse-btn {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  padding: 0;
+  margin-right: 8px;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  transition: color 0.2s;
+}
+
+.group-collapse-btn:hover {
+  color: #fff;
+}
+
+.tree-group-header.collapsed .group-collapse-btn {
+  color: #666;
+}
+
 .group-header-title {
   flex: 1;
   color: #ccc;
+  cursor: pointer;
 }
 
 .tree-panel.collapsed .group-header-title {
