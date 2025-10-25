@@ -53,7 +53,7 @@
         </div>
 
         <!-- Valid Image -->
-        <img v-else ref="imageElement" :src="activeImage.assetUrl" :alt="activeImage.name" class="main-image"
+        <img v-else-if="activeImage" ref="imageElement" :src="activeImage.assetUrl" :alt="activeImage.name" class="main-image"
           :class="{ 'fit-to-window': fitMode === 'fit-to-window' }" :style="{
             transform: fitMode === 'actual-size'
               ? `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`
@@ -147,7 +147,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
-import type { ImageData, TabData, SessionData, FolderContext } from '../types'
+import type { ImageData, TabData, SessionData, FolderContext, FileEntry } from '../types'
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from '../config/keyboardShortcuts'
 import { sessionService } from '../services/sessionService'
 import { memoryManager, ManagedResource } from '../utils/memoryManager'
@@ -175,6 +175,8 @@ const preloadedImages = ref<Set<string>>(new Set())
 // Navigation state for handling rapid navigation
 const navigationInProgress = ref(false)
 const pendingNavigationDirection = ref<'next' | 'prev' | null>(null)
+const navigationQueue = ref<Array<'next' | 'prev'>>([])
+const MAX_NAVIGATION_QUEUE_DEPTH = 3 // Maximum number of pending navigations
 const navigationSequenceId = ref(0)
 const lastKeyPressTime = ref(0)
 const KEY_REPEAT_THRESHOLD = 50 // ms - minimum time between key presses to prevent excessive queuing
@@ -226,8 +228,8 @@ const sortedTabs = computed(() => {
 })
 
 const isImageCorrupted = computed(() => {
-  // Image is corrupted if we have a file entry but no valid image data
-  return currentFileEntry.value !== null && (!activeImage.value || !activeImage.value.assetUrl)
+  // Image is corrupted if we have a file entry but no valid assetUrl (empty string indicates corrupted)
+  return currentFileEntry.value !== null && activeImage.value !== null && activeImage.value.assetUrl === ''
 })
 
 // Helper function to load image metadata on-demand
@@ -384,10 +386,11 @@ const loadFolderContextForTab = async (tab: TabData) => {
 
     const selectedIndex = imageFileEntries.findIndex(entry => entry.path === imagePath)
     if (selectedIndex !== -1) {
-      const PRELOAD_RANGE = 3
+      const PRELOAD_RANGE = 2 // Reduced from 3 to 2 for faster initial load
       const startIndex = Math.max(0, selectedIndex - PRELOAD_RANGE)
       const endIndex = Math.min(imageFileEntries.length - 1, selectedIndex + PRELOAD_RANGE)
 
+      // Start preloading adjacent images in background (non-blocking)
       const adjacentLoadPromises: Promise<void>[] = []
       for (let i = startIndex; i <= endIndex; i++) {
         if (i !== selectedIndex) {
@@ -405,7 +408,10 @@ const loadFolderContextForTab = async (tab: TabData) => {
         }
       }
 
-      await Promise.all(adjacentLoadPromises)
+      // Fire and forget - don't wait for preloading to complete (non-blocking)
+      Promise.allSettled(adjacentLoadPromises).then(() => {
+        console.log(`✅ Background preloaded ${adjacentLoadPromises.length} adjacent images for tab`)
+      })
     }
 
     // Store folder context for this tab
@@ -496,9 +502,18 @@ const closeTab = (tabId: string) => {
 }
 
 const nextImage = async () => {
-  // If navigation is in progress, queue this navigation
+  // If navigation is in progress, queue this navigation with max depth
   if (navigationInProgress.value) {
-    pendingNavigationDirection.value = 'next'
+    // Only queue if under max depth
+    if (navigationQueue.value.length < MAX_NAVIGATION_QUEUE_DEPTH) {
+      // Optimize: if last queued is same direction, don't add duplicate
+      const lastQueued = navigationQueue.value[navigationQueue.value.length - 1]
+      if (lastQueued !== 'next') {
+        navigationQueue.value.push('next')
+      }
+    } else {
+      console.warn('⚠️ Navigation queue full, skipping request')
+    }
     return
   }
 
@@ -506,9 +521,18 @@ const nextImage = async () => {
 }
 
 const previousImage = async () => {
-  // If navigation is in progress, queue this navigation
+  // If navigation is in progress, queue this navigation with max depth
   if (navigationInProgress.value) {
-    pendingNavigationDirection.value = 'prev'
+    // Only queue if under max depth
+    if (navigationQueue.value.length < MAX_NAVIGATION_QUEUE_DEPTH) {
+      // Optimize: if last queued is same direction, don't add duplicate
+      const lastQueued = navigationQueue.value[navigationQueue.value.length - 1]
+      if (lastQueued !== 'prev') {
+        navigationQueue.value.push('prev')
+      }
+    } else {
+      console.warn('⚠️ Navigation queue full, skipping request')
+    }
     return
   }
 
@@ -575,8 +599,16 @@ const performNavigation = async (direction: 'next' | 'prev') => {
   } finally {
     navigationInProgress.value = false
 
-    // If there's a pending navigation, execute it immediately
-    if (pendingNavigationDirection.value) {
+    // Process navigation queue (newer approach with max depth)
+    if (navigationQueue.value.length > 0) {
+      const nextDirection = navigationQueue.value.shift()
+      if (nextDirection) {
+        // Use nextTick to avoid deep recursion
+        nextTick(() => performNavigation(nextDirection))
+      }
+    }
+    // Fallback to old pending navigation for compatibility
+    else if (pendingNavigationDirection.value) {
       const nextDirection = pendingNavigationDirection.value
       pendingNavigationDirection.value = null
       // Use nextTick to avoid deep recursion
@@ -600,8 +632,17 @@ const updateCurrentTabImage = async (newImageData: ImageData | null, fileEntry: 
     activeTab.title = newImageData.name
     console.log(`Navigated to: ${newImageData.name}`)
   } else {
-    // Corrupted image - clear image data and update tab with file entry info
-    activeTab.imageData = {} as ImageData // Clear the old image data
+    // Corrupted image - create a placeholder ImageData with safe defaults
+    const placeholderImageData: ImageData = {
+      id: `corrupted-${fileEntry.path}`,
+      name: fileEntry.name,
+      path: fileEntry.path,
+      assetUrl: '', // Empty URL for corrupted images
+      dimensions: { width: 0, height: 0 },
+      fileSize: fileEntry.size || 0,
+      lastModified: fileEntry.lastModified || new Date()
+    }
+    activeTab.imageData = placeholderImageData
     activeTab.title = fileEntry.name
     console.log(`Navigated to corrupted image: ${fileEntry.name}`)
   }
@@ -632,10 +673,22 @@ const openImageInNewTab = async () => {
 
   // Create a new tab even if image is corrupted
   const tabId = `tab-${Date.now()}`
+
+  // Create proper placeholder for corrupted images
+  const imageData: ImageData = nextImageData || {
+    id: `corrupted-${nextEntry.path}`,
+    name: nextEntry.name,
+    path: nextEntry.path,
+    assetUrl: '',
+    dimensions: { width: 0, height: 0 },
+    fileSize: nextEntry.size || 0,
+    lastModified: nextEntry.lastModified || new Date()
+  }
+
   const tab: TabData = {
     id: tabId,
     title: nextEntry.name,
-    imageData: nextImageData || {} as ImageData, // Use empty object if null
+    imageData: imageData,
     isActive: true, // Switch to the new tab immediately
     order: getNextTabOrder()
   }
@@ -649,11 +702,17 @@ const openImageInNewTab = async () => {
   const oldActiveTabId = activeTabId.value
   activeTabId.value = tabId
 
-  // Store the same folder context for the new tab
+  // Create a NEW folder context for the new tab (deep clone to avoid shared references)
   const currentFolderContext = tabFolderContexts.value.get(oldActiveTabId)
   if (currentFolderContext) {
-    tabFolderContexts.value.set(tabId, currentFolderContext)
-    currentFolderImages.value = Array.from(currentFolderContext.loadedImages.values())
+    // Deep clone the folder context to avoid memory leaks from shared references
+    const newFolderContext: FolderContext = {
+      fileEntries: currentFolderContext.fileEntries, // fileEntries are read-only, can share
+      loadedImages: new Map(currentFolderContext.loadedImages), // Clone the Map
+      folderPath: currentFolderContext.folderPath
+    }
+    tabFolderContexts.value.set(tabId, newFolderContext)
+    currentFolderImages.value = Array.from(newFolderContext.loadedImages.values())
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
@@ -819,14 +878,41 @@ const onImageError = () => {
   console.error('Failed to load image')
 }
 
-// Performance optimization methods with lazy loading
+// Debouncing for preload operations
+let preloadTimeoutId: number | null = null
+let lastPreloadImagePath: string | null = null
+
+// Performance optimization methods with lazy loading and adaptive preloading
 const preloadAdjacentImagesLazy = async (currentImage: ImageData, folderContext: FolderContext) => {
   const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === currentImage.path)
   if (currentIndex === -1) return
 
-  const PRELOAD_RANGE = 25
+  // Debouncing: If already preloading for the same image, skip
+  if (lastPreloadImagePath === currentImage.path) {
+    return
+  }
+
+  // Cancel any pending preload operations
+  if (preloadTimeoutId !== null) {
+    clearTimeout(preloadTimeoutId)
+    preloadTimeoutId = null
+  }
+
+  // Cancel any in-flight image loads from previous navigation
+  lazyImageLoader.cancelPendingRequests()
+
+  lastPreloadImagePath = currentImage.path
+
+  // Adaptive preload range based on folder size and memory
+  const PRELOAD_RANGE = getAdaptivePreloadRange(folderContext.fileEntries.length)
   const startIndex = Math.max(0, currentIndex - PRELOAD_RANGE)
   const endIndex = Math.min(folderContext.fileEntries.length - 1, currentIndex + PRELOAD_RANGE)
+
+  // Check memory before preloading
+  if (memoryManager.isMemoryUsageHigh()) {
+    console.warn('⚠️ High memory usage, skipping preload')
+    return
+  }
 
   const preloadPromises: Promise<void>[] = []
   const preloadUrls: string[] = []
@@ -841,6 +927,9 @@ const preloadAdjacentImagesLazy = async (currentImage: ImageData, folderContext:
             preloadUrls.push(imageData.assetUrl)
             preloadedImages.value.add(imageData.assetUrl)
           }
+        }).catch(() => {
+          // Silently handle corrupted images during preload
+          console.warn(`Skipping corrupted image during preload: ${entry.path}`)
         })
 
         preloadPromises.push(loadPromise)
@@ -848,11 +937,35 @@ const preloadAdjacentImagesLazy = async (currentImage: ImageData, folderContext:
     }
   }
 
-  // Wait for metadata to load, then preload actual images
-  await Promise.all(preloadPromises)
+  // Fire and forget - don't wait for metadata loading (non-blocking)
+  Promise.allSettled(preloadPromises).then(() => {
+    if (preloadUrls.length > 0) {
+      lazyImageLoader.preloadImages(preloadUrls, 'low')
+      console.log(`🖼️ Started browser-level preload for ${preloadUrls.length} images`)
+    }
+  })
+}
 
-  if (preloadUrls.length > 0) {
-    lazyImageLoader.preloadImages(preloadUrls, 'low')
+// Adaptive preload range based on folder size and memory
+const getAdaptivePreloadRange = (folderSize: number): number => {
+  // Check memory usage
+  const memoryUsage = memoryManager.getMemoryUsage()
+  if (memoryUsage) {
+    const usageRatio = memoryUsage.used / memoryUsage.limit
+    if (usageRatio > 0.7) {
+      return 2 // Very conservative when memory is high
+    }
+  }
+
+  // Adjust based on folder size
+  if (folderSize > 5000) {
+    return 3 // Very large folders
+  } else if (folderSize > 1000) {
+    return 5 // Large folders (default for user's choice)
+  } else if (folderSize > 500) {
+    return 7 // Medium folders
+  } else {
+    return 10 // Small folders - can afford more preloading
   }
 }
 
@@ -860,13 +973,32 @@ const cleanupTabResources = (tabId: string) => {
   const tab = tabs.value.get(tabId)
   if (!tab) return
 
-  // Remove from preloaded images
-  preloadedImages.value.delete(tab.imageData.assetUrl)
+  // Get the folder context for this tab
+  const folderContext = tabFolderContexts.value.get(tabId)
 
-  // Remove from memory manager cache
+  // Clean up ALL preloaded images for this tab's folder context, not just the current image
+  if (folderContext) {
+    // Remove all loaded images from this folder's context
+    for (const [, imageData] of folderContext.loadedImages.entries()) {
+      // Remove from preloaded images set
+      preloadedImages.value.delete(imageData.assetUrl)
+
+      // Remove from memory manager cache
+      memoryManager.removeCachedImage(imageData.assetUrl)
+    }
+
+    // Clear the loaded images map for this folder
+    folderContext.loadedImages.clear()
+  }
+
+  // Also remove the current tab's image
+  preloadedImages.value.delete(tab.imageData.assetUrl)
   memoryManager.removeCachedImage(tab.imageData.assetUrl)
 
-  console.log(`Cleaned up resources for tab: ${tab.title}`)
+  // Cancel any pending preload requests
+  lazyImageLoader.cancelPendingRequests()
+
+  console.log(`✅ Cleaned up all resources for tab: ${tab.title}`)
 }
 
 const optimizeMemoryUsage = () => {
@@ -1178,15 +1310,54 @@ const restoreFromSession = async (sessionData: SessionData) => {
 
     console.log(`✅ All ${tabs.value.size} tabs restored in parallel`)
 
-    // Phase 2: Fully load only the active tab
+    // Phase 2: Fully load only the active tab (MINIMAL LOADING for fast startup)
     if (activeTabIdToLoad && tabs.value.has(activeTabIdToLoad)) {
       activeTabId.value = activeTabIdToLoad
       const activeTab = tabs.value.get(activeTabIdToLoad)
       if (activeTab) {
         activeTab.isActive = true
-        await loadFolderContextForTab(activeTab)
-        activeTab.isFullyLoaded = true
-        console.log(`✅ Active tab fully loaded: ${activeTab.title}`)
+
+        // CRITICAL: Only load folder context WITHOUT preloading adjacent images
+        // This makes session restore much faster on network drives
+        const imagePath = activeTab.imageData.path
+        const lastSeparatorIndex = Math.max(imagePath.lastIndexOf('/'), imagePath.lastIndexOf('\\'))
+        const folderPath = imagePath.substring(0, lastSeparatorIndex)
+
+        try {
+          const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
+          const imageFileEntries = folderEntries
+            .filter(entry => entry.is_image)
+            .map(entry => ({
+              name: entry.name,
+              path: entry.path,
+              isDirectory: false,
+              isImage: true,
+              size: entry.size,
+              lastModified: entry.last_modified ? new Date(entry.last_modified) : undefined
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+
+          // Create minimal folder context with only the current image
+          const loadedImages = new Map<string, ImageData>()
+          loadedImages.set(imagePath, activeTab.imageData)
+
+          const folderContext: FolderContext = {
+            fileEntries: imageFileEntries,
+            loadedImages,
+            folderPath
+          }
+
+          tabFolderContexts.value.set(activeTab.id, folderContext)
+          currentFolderImages.value = Array.from(folderContext.loadedImages.values())
+            .sort((a, b) => a.name.localeCompare(b.name))
+
+          activeTab.isFullyLoaded = true
+          console.log(`✅ Active tab loaded (minimal, no preload): ${activeTab.title}`)
+        } catch (error) {
+          console.error('Failed to load folder for active tab:', error)
+          // Still mark as loaded so we don't retry indefinitely
+          activeTab.isFullyLoaded = true
+        }
       }
     } else if (tabs.value.size > 0) {
       // If the original active tab doesn't exist, activate the first available tab
@@ -1194,18 +1365,24 @@ const restoreFromSession = async (sessionData: SessionData) => {
       if (firstTab) {
         activeTabId.value = firstTab.id
         firstTab.isActive = true
-        await loadFolderContextForTab(firstTab)
         firstTab.isFullyLoaded = true
         activeTabIdToLoad = firstTab.id
-        console.log(`✅ First tab fully loaded: ${firstTab.title}`)
+        console.log(`✅ First tab activated (deferred loading): ${firstTab.title}`)
       }
     }
 
-    console.log(`Session restored with ${tabs.value.size} tabs (1 fully loaded)`)
+    console.log(`⚡ Session restored FAST with ${tabs.value.size} tabs (minimal loading, no preload)`)
 
-    // Phase 3: Preload adjacent tabs in background (non-blocking)
+    // Phase 3: Background load other tabs and preload - FULLY NON-BLOCKING
+    // This happens after the UI is already responsive
     if (activeTabIdToLoad) {
-      preloadAdjacentTabs(activeTabIdToLoad)
+      // Use nextTick to ensure this happens after UI update
+      nextTick(() => {
+        // Fire and forget - background preload adjacent tabs
+        preloadAdjacentTabs(activeTabIdToLoad).catch(err => {
+          console.warn('Background tab preload failed:', err)
+        })
+      })
     }
   } catch (error) {
     console.error('Failed to restore session:', error)

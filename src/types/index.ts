@@ -29,12 +29,32 @@ export interface FileEntry {
 }
 
 /**
+ * Paginated folder result from backend
+ */
+export interface PaginatedFolderResult {
+  entries: FileEntry[]
+  totalCount: number
+  hasMore: boolean
+  offset: number
+  limit: number
+}
+
+/**
  * Represents folder context with lazy loading support
  */
 export interface FolderContext {
   fileEntries: FileEntry[] // Lightweight list of all files in folder
   loadedImages: Map<string, ImageData> // Cache of loaded image metadata (keyed by path)
   folderPath: string
+}
+
+/**
+ * Virtual folder context with pagination support for very large folders
+ */
+export interface VirtualFolderContext extends FolderContext {
+  totalCount: number // Total number of images in folder
+  loadedChunks: Set<number> // Track which chunks have been loaded
+  chunkSize: number // Size of each pagination chunk
 }
 
 /**

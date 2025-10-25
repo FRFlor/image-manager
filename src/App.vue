@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import ImageViewer from './components/ImageViewer.vue'
 import LoadingIndicator from './components/LoadingIndicator.vue'
@@ -91,51 +91,46 @@ onMounted(async () => {
       console.error('Failed to set up event listeners:', error)
     }
     
-    // Try to load auto-session after components are ready
-    setTimeout(async () => {
-      try {
-        console.log('Attempting to load auto-session...')
-        
-        // Wait for the component to be fully mounted
-        setTimeout(async () => {
-          try {
-            const sessionLoaded = await imageViewer.value?.loadAutoSession()
-            if (sessionLoaded) {
-              console.log('Auto-session loaded and restored')
-            } else {
-              console.log('No auto-session found')
-            }
-          } catch (error) {
-            console.error('Failed to load auto-session:', error)
-          } finally {
-            // Application is ready
-            loadingState.value = {
-              isLoading: false,
-              operation: ''
-            }
-            
-            console.log('🚀 Application initialized successfully')
-          }
-        }, 200)
-      } catch (error) {
-        console.error('Failed to load auto-session on startup:', error)
-        loadingState.value = {
-          isLoading: false,
-          operation: ''
-        }
+    // Wait for component to be ready with proper async handling
+    await waitForComponent()
 
-      }
-    }, 100)
-    
   } catch (err) {
     console.error('Application initialization error:', err)
     loadingState.value = {
       isLoading: false,
       operation: ''
     }
-
   }
 })
+
+// Helper function to wait for component to be ready
+const waitForComponent = async () => {
+  return new Promise<void>((resolve) => {
+    // Use nextTick to ensure component is mounted
+    nextTick(async () => {
+      try {
+        console.log('Attempting to load auto-session...')
+        const sessionLoaded = await imageViewer.value?.loadAutoSession()
+        if (sessionLoaded) {
+          console.log('Auto-session loaded and restored')
+        } else {
+          console.log('No auto-session found')
+        }
+      } catch (error) {
+        console.error('Failed to load auto-session:', error)
+      } finally {
+        // Application is ready
+        loadingState.value = {
+          isLoading: false,
+          operation: ''
+        }
+
+        console.log('🚀 Application initialized successfully')
+        resolve()
+      }
+    })
+  })
+}
 
 onUnmounted(async () => {
   // Also save session when component unmounts as a fallback
@@ -225,6 +220,7 @@ const handleOpenImageRequest = async () => {
       const startIndex = Math.max(0, selectedIndex - PRELOAD_RANGE)
       const endIndex = Math.min(imageFileEntries.length - 1, selectedIndex + PRELOAD_RANGE)
 
+      // Start preloading adjacent images in background (non-blocking)
       const adjacentLoadPromises: Promise<void>[] = []
       for (let i = startIndex; i <= endIndex; i++) {
         if (i !== selectedIndex) { // Skip the selected image, already loaded
@@ -252,8 +248,13 @@ const handleOpenImageRequest = async () => {
         }
       }
 
-      // Load adjacent images in parallel (corrupted images will be skipped)
-      await Promise.all(adjacentLoadPromises)
+      // Fire and forget - don't wait for preloading to complete
+      // Images will be available when they finish loading in background
+      Promise.all(adjacentLoadPromises).then(() => {
+        console.log(`✅ Preloaded ${adjacentLoadPromises.length} adjacent images in background`)
+      }).catch(err => {
+        console.warn('Some adjacent images failed to preload:', err)
+      })
 
       // Create folder context
       const folderContext: FolderContext = {

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc}; // Still needed for read_image_file
 use image::io::Reader as ImageReader;
 use uuid::Uuid;
 use tauri::{
@@ -12,12 +12,16 @@ use tauri::{
 };
 use std::sync::{Arc, Mutex};
 
+mod metadata_cache;
+use metadata_cache::MetadataCache;
+
 // Application state to track if we're in the process of exiting
 struct AppState {
     is_exiting: Arc<Mutex<bool>>,
+    metadata_cache: Arc<MetadataCache>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
     name: String,
     path: String,
@@ -62,6 +66,68 @@ pub struct SessionTab {
     order: u32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PaginatedFolderResult {
+    entries: Vec<FileEntry>,
+    total_count: usize,
+    has_more: bool,
+    offset: usize,
+    limit: usize,
+}
+
+// Helper function to collect image files from a directory
+fn collect_image_files(target_path: &Path) -> Result<Vec<FileEntry>, String> {
+    let mut entries = Vec::new();
+    let supported_extensions = get_supported_image_extensions();
+
+    match fs::read_dir(target_path) {
+        Ok(dir_entries) => {
+            for entry in dir_entries {
+                if let Ok(dir_entry) = entry {
+                    // Skip directories entirely - only process files
+                    if let Ok(file_type) = dir_entry.file_type() {
+                        if file_type.is_dir() {
+                            continue;
+                        }
+                    }
+
+                    let path = dir_entry.path();
+
+                    // Only include files with supported image extensions
+                    let is_image = path.extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(|ext| supported_extensions.contains(&ext.to_lowercase()))
+                        .unwrap_or(false);
+
+                    if !is_image {
+                        continue;
+                    }
+
+                    let name = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("Unknown")
+                        .to_string();
+
+                    entries.push(FileEntry {
+                        name: name.clone(),
+                        path: path.to_string_lossy().to_string(),
+                        is_directory: false,
+                        is_image: true,
+                        size: None,
+                        last_modified: None,
+                    });
+                }
+            }
+        }
+        Err(e) => return Err(format!("Failed to read directory: {}", e)),
+    }
+
+    // Sort entries alphabetically by name for consistent ordering
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    Ok(entries)
+}
+
 // File system operations
 #[tauri::command]
 async fn browse_folder(path: Option<String>) -> Result<Vec<FileEntry>, String> {
@@ -78,73 +144,74 @@ async fn browse_folder(path: Option<String>) -> Result<Vec<FileEntry>, String> {
         return Err(format!("Path is not a directory: {}", target_path.display()));
     }
 
-    let mut entries = Vec::new();
-    let supported_extensions = get_supported_image_extensions();
-
-    match fs::read_dir(&target_path) {
-        Ok(dir_entries) => {
-            for entry in dir_entries {
-                match entry {
-                    Ok(dir_entry) => {
-                        let path = dir_entry.path();
-                        let name = path.file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("Unknown")
-                            .to_string();
-
-                        let is_directory = path.is_dir();
-                        let is_image = if is_directory {
-                            false
-                        } else {
-                            path.extension()
-                                .and_then(|ext| ext.to_str())
-                                .map(|ext| supported_extensions.contains(&ext.to_lowercase()))
-                                .unwrap_or(false)
-                        };
-
-                        let metadata = fs::metadata(&path).ok();
-                        let size = metadata.as_ref().and_then(|m| if m.is_file() { Some(m.len()) } else { None });
-                        let last_modified = metadata.and_then(|m| {
-                            m.modified().ok().and_then(|time| {
-                                DateTime::<Utc>::from(time).format("%Y-%m-%d %H:%M:%S UTC").to_string().into()
-                            })
-                        });
-
-                        entries.push(FileEntry {
-                            name,
-                            path: path.to_string_lossy().to_string(),
-                            is_directory,
-                            is_image,
-                            size,
-                            last_modified,
-                        });
-                    }
-                    Err(e) => {
-                        // Log error but continue processing other entries
-                        eprintln!("Error reading directory entry: {}", e);
-                    }
-                }
-            }
-        }
-        Err(e) => return Err(format!("Failed to read directory: {}", e)),
-    }
-
-    // Sort entries: directories first, then files, both alphabetically
-    entries.sort_by(|a, b| {
-        match (a.is_directory, b.is_directory) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
-    });
-
-    Ok(entries)
+    collect_image_files(&target_path)
 }
 
 #[tauri::command]
-async fn read_image_file(path: String) -> Result<ImageData, String> {
+async fn browse_folder_paginated(
+    path: Option<String>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<PaginatedFolderResult, String> {
+    let target_path = match path {
+        Some(p) => PathBuf::from(p),
+        None => std::env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?,
+    };
+
+    if !target_path.exists() {
+        return Err(format!("Path does not exist: {}", target_path.display()));
+    }
+
+    if !target_path.is_dir() {
+        return Err(format!("Path is not a directory: {}", target_path.display()));
+    }
+
+    // Collect all image files
+    let all_entries = collect_image_files(&target_path)?;
+    let total_count = all_entries.len();
+
+    // Apply pagination
+    let offset = offset.unwrap_or(0);
+    let limit = limit.unwrap_or(500); // Default to 500 items per page
+
+    let end_index = std::cmp::min(offset + limit, total_count);
+    let entries: Vec<FileEntry> = if offset < total_count {
+        all_entries[offset..end_index].to_vec()
+    } else {
+        Vec::new()
+    };
+
+    let has_more = end_index < total_count;
+
+    Ok(PaginatedFolderResult {
+        entries,
+        total_count,
+        has_more,
+        offset,
+        limit,
+    })
+}
+
+#[tauri::command]
+async fn get_folder_image_count(path: String) -> Result<usize, String> {
+    let target_path = PathBuf::from(path);
+
+    if !target_path.exists() {
+        return Err(format!("Path does not exist: {}", target_path.display()));
+    }
+
+    if !target_path.is_dir() {
+        return Err(format!("Path is not a directory: {}", target_path.display()));
+    }
+
+    let entries = collect_image_files(&target_path)?;
+    Ok(entries.len())
+}
+
+#[tauri::command]
+async fn read_image_file(path: String, state: State<'_, AppState>) -> Result<ImageData, String> {
     let image_path = Path::new(&path);
-    
+
     if !image_path.exists() {
         return Err(format!("Image file does not exist: {}", path));
     }
@@ -167,7 +234,7 @@ async fn read_image_file(path: String) -> Result<ImageData, String> {
     // Get file metadata
     let metadata = fs::metadata(&image_path)
         .map_err(|e| format!("Failed to read file metadata: {}", e))?;
-    
+
     let file_size = metadata.len();
     let last_modified = metadata.modified()
         .map_err(|e| format!("Failed to get file modification time: {}", e))
@@ -175,20 +242,34 @@ async fn read_image_file(path: String) -> Result<ImageData, String> {
             Ok(DateTime::<Utc>::from(time).format("%Y-%m-%d %H:%M:%S UTC").to_string())
         })?;
 
-    // Read image dimensions
-    let dimensions = match ImageReader::open(&image_path) {
-        Ok(reader) => {
-            match reader.with_guessed_format() {
-                Ok(reader_with_format) => {
-                    match reader_with_format.into_dimensions() {
-                        Ok((width, height)) => ImageDimensions { width, height },
-                        Err(e) => return Err(format!("Failed to read image dimensions: {}", e)),
-                    }
-                }
-                Err(e) => return Err(format!("Failed to detect image format: {}", e)),
-            }
+    // Check cache first
+    let dimensions = if let Some(cached) = state.metadata_cache.get(&path, &last_modified)? {
+        // Cache hit! Use cached dimensions
+        ImageDimensions {
+            width: cached.width,
+            height: cached.height,
         }
-        Err(e) => return Err(format!("Failed to open image file: {}", e)),
+    } else {
+        // Cache miss - read image dimensions from file
+        let dims = match ImageReader::open(&image_path) {
+            Ok(reader) => {
+                match reader.with_guessed_format() {
+                    Ok(reader_with_format) => {
+                        match reader_with_format.into_dimensions() {
+                            Ok((width, height)) => ImageDimensions { width, height },
+                            Err(e) => return Err(format!("Failed to read image dimensions: {}", e)),
+                        }
+                    }
+                    Err(e) => return Err(format!("Failed to detect image format: {}", e)),
+                }
+            }
+            Err(e) => return Err(format!("Failed to open image file: {}", e)),
+        };
+
+        // Store in cache for future use
+        state.metadata_cache.set(&path, &last_modified, dims.width, dims.height, file_size)?;
+
+        dims
     };
 
     // Generate unique ID and asset URL
@@ -197,7 +278,7 @@ async fn read_image_file(path: String) -> Result<ImageData, String> {
         .and_then(|n| n.to_str())
         .unwrap_or("Unknown")
         .to_string();
-    
+
     // Create asset URL for Tauri's asset protocol
     let asset_url = format!("asset://localhost/{}", path.replace("\\", "/"));
 
@@ -444,6 +525,15 @@ async fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(
     // Set the exiting flag so window close events won't prevent close
     *state.is_exiting.lock().unwrap() = true;
 
+    // Flush metadata cache to ensure all data is written to disk
+    if let Ok(stats) = state.metadata_cache.get_stats() {
+        println!("Flushing metadata cache ({} entries)...", stats.entry_count);
+        if let Err(e) = state.metadata_cache.flush() {
+            eprintln!("Warning: Failed to flush cache on exit: {}", e);
+        }
+    }
+    // The SQLite connection will be automatically closed when the Arc is dropped
+
     // Close all windows gracefully
     // When all windows are closed, Tauri will exit naturally with code 0
     for (_, window) in app.webview_windows() {
@@ -457,9 +547,26 @@ async fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize metadata cache
+    let metadata_cache = match MetadataCache::new(100_000) {
+        Ok(cache) => {
+            if let Ok(stats) = cache.get_stats() {
+                println!("Metadata cache loaded: {}/{} entries", stats.entry_count, stats.max_entries);
+            }
+            Arc::new(cache)
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize metadata cache: {}", e);
+            eprintln!("The app will continue without caching (performance will be degraded)");
+            // This will panic - we need cache to work properly
+            panic!("Cannot start app without metadata cache");
+        }
+    };
+
     // Initialize app state
     let app_state = AppState {
         is_exiting: Arc::new(Mutex::new(false)),
+        metadata_cache,
     };
 
     tauri::Builder::default()
@@ -468,6 +575,8 @@ pub fn run() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             browse_folder,
+            browse_folder_paginated,
+            get_folder_image_count,
             read_image_file,
             get_supported_image_types,
             open_folder_dialog,

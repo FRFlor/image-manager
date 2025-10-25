@@ -10,10 +10,22 @@ export interface LazyLoadOptions {
   preloadDistance?: number
 }
 
+interface LoadRequest {
+  url: string
+  priority: 'high' | 'low'
+  resolve: () => void
+  reject: (error: Error) => void
+  abortController: AbortController
+}
+
 export class LazyImageLoader {
   private observer: IntersectionObserver | null = null
   private loadingImages: Set<string> = new Set()
   private loadedImages: Set<string> = new Set()
+  private requestQueue: LoadRequest[] = []
+  private activeRequests = 0
+  private readonly maxConcurrentRequests = 6 // Browser connection pool limit
+  private readonly loadTimeout = 5000 // 5 second timeout for slow/corrupted images
 
   constructor(options: LazyLoadOptions = {}) {
     this.initializeObserver(options)
@@ -118,43 +130,135 @@ export class LazyImageLoader {
   }
 
   /**
-   * Preload images that are likely to be viewed soon
+   * Process the next request in the queue
    */
-  preloadImages(urls: string[], priority: 'high' | 'low' = 'low'): void {
-    const loadPromises = urls.map(url => {
+  private processQueue(): void {
+    // Don't start new requests if we're at capacity
+    if (this.activeRequests >= this.maxConcurrentRequests || this.requestQueue.length === 0) {
+      return
+    }
+
+    // Sort queue by priority (high priority first)
+    this.requestQueue.sort((a, b) => {
+      if (a.priority === 'high' && b.priority === 'low') return -1
+      if (a.priority === 'low' && b.priority === 'high') return 1
+      return 0
+    })
+
+    const request = this.requestQueue.shift()
+    if (!request) return
+
+    this.activeRequests++
+    this.loadImageWithTimeout(request)
+      .finally(() => {
+        this.activeRequests--
+        this.processQueue() // Process next request
+      })
+  }
+
+  /**
+   * Load an image with timeout handling
+   */
+  private async loadImageWithTimeout(request: LoadRequest): Promise<void> {
+    const { url, resolve, reject, abortController } = request
+
+    // Check cache first
+    const cachedImage = memoryManager.getCachedImage(url)
+    if (cachedImage && cachedImage.complete) {
+      this.loadedImages.add(url)
+      this.loadingImages.delete(url)
+      resolve()
+      return
+    }
+
+    const img = new Image()
+    const timeoutId = setTimeout(() => {
+      abortController.abort()
+      this.loadingImages.delete(url)
+      reject(new Error(`Image load timeout: ${url}`))
+    }, this.loadTimeout)
+
+    img.onload = () => {
+      clearTimeout(timeoutId)
+      memoryManager.cacheImage(url, img)
+      this.loadedImages.add(url)
+      this.loadingImages.delete(url)
+      resolve()
+    }
+
+    img.onerror = () => {
+      clearTimeout(timeoutId)
+      this.loadingImages.delete(url)
+      reject(new Error(`Failed to load image: ${url}`))
+    }
+
+    // Check if aborted before starting load
+    if (abortController.signal.aborted) {
+      clearTimeout(timeoutId)
+      this.loadingImages.delete(url)
+      reject(new Error(`Load aborted: ${url}`))
+      return
+    }
+
+    img.src = url
+  }
+
+  /**
+   * Preload images that are likely to be viewed soon (with throttling and deduplication)
+   */
+  preloadImages(urls: string[], priority: 'high' | 'low' = 'low'): Promise<void> {
+    const loadPromises: Promise<void>[] = []
+
+    for (const url of urls) {
+      // Deduplication: skip if already loaded or loading
       if (this.loadedImages.has(url) || this.loadingImages.has(url)) {
-        return Promise.resolve()
+        continue
       }
 
-      return new Promise<void>((resolve, reject) => {
-        const img = new Image()
-        
-        img.onload = () => {
-          memoryManager.cacheImage(url, img)
-          this.loadedImages.add(url)
-          resolve()
-        }
-        
-        img.onerror = () => {
-          console.warn(`Failed to preload image: ${url}`)
-          reject(new Error(`Failed to preload: ${url}`))
-        }
-        
-        // Use requestIdleCallback for low priority preloading
-        if (priority === 'low' && 'requestIdleCallback' in window) {
-          requestIdleCallback(() => {
-            img.src = url
-          })
-        } else {
-          img.src = url
-        }
-      })
-    })
+      this.loadingImages.add(url)
 
-    Promise.allSettled(loadPromises).then(results => {
+      const promise = new Promise<void>((resolve, reject) => {
+        const abortController = new AbortController()
+
+        const request: LoadRequest = {
+          url,
+          priority,
+          resolve,
+          reject,
+          abortController
+        }
+
+        this.requestQueue.push(request)
+      })
+
+      loadPromises.push(promise)
+    }
+
+    // Start processing the queue
+    this.processQueue()
+
+    // Return a promise that resolves when all images are loaded (or failed)
+    return Promise.allSettled(loadPromises).then(results => {
       const successful = results.filter(r => r.status === 'fulfilled').length
-      console.log(`📸 Preloaded ${successful}/${urls.length} images`)
+      const failed = results.filter(r => r.status === 'rejected').length
+      if (successful > 0 || failed > 0) {
+        console.log(`📸 Preloaded ${successful}/${urls.length} images (${failed} failed)`)
+      }
     })
+  }
+
+  /**
+   * Cancel all pending preload requests
+   */
+  cancelPendingRequests(): void {
+    // Abort all queued requests
+    for (const request of this.requestQueue) {
+      request.abortController.abort()
+      request.reject(new Error('Request cancelled'))
+    }
+
+    this.requestQueue = []
+    console.log('🚫 Cancelled all pending image preload requests')
   }
 
   /**
@@ -173,6 +277,7 @@ export class LazyImageLoader {
       this.observer.disconnect()
       this.observer = null
     }
+    this.cancelPendingRequests()
     this.clearCache()
   }
 }

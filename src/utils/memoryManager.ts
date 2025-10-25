@@ -6,11 +6,16 @@ export interface ResourceCleanup {
   cleanup(): void
 }
 
+interface CacheEntry {
+  image: HTMLImageElement
+  lastAccessed: number
+}
+
 export class MemoryManager {
   private static instance: MemoryManager
   private resources: Set<ResourceCleanup> = new Set()
-  private imageCache: Map<string, HTMLImageElement> = new Map()
-  private maxCacheSize = 50 // Maximum number of cached images
+  private imageCache: Map<string, CacheEntry> = new Map()
+  private maxCacheSize = 100 // Increased from 50 to 100 for better performance
   private cleanupInterval: number | null = null
 
   private constructor() {
@@ -40,40 +45,96 @@ export class MemoryManager {
   }
 
   /**
-   * Cache an image element for reuse
+   * Cache an image element for reuse (LRU eviction)
    */
   cacheImage(url: string, imageElement: HTMLImageElement): void {
-    // Remove oldest entries if cache is full
+    // If cache is full, evict least recently used entry
     if (this.imageCache.size >= this.maxCacheSize) {
-      const firstKey = this.imageCache.keys().next().value
-      if (firstKey) {
-        const oldImage = this.imageCache.get(firstKey)
-        if (oldImage) {
-          this.cleanupImageElement(oldImage)
-        }
-        this.imageCache.delete(firstKey)
-      }
+      this.evictLRU()
     }
 
-    this.imageCache.set(url, imageElement)
+    // Add to cache with current timestamp
+    this.imageCache.set(url, {
+      image: imageElement,
+      lastAccessed: Date.now()
+    })
   }
 
   /**
-   * Get cached image element
+   * Evict the least recently used entry from cache
+   */
+  private evictLRU(): void {
+    let oldestKey: string | null = null
+    let oldestTime = Infinity
+
+    // Find the entry with the oldest access time
+    for (const [key, entry] of this.imageCache.entries()) {
+      if (entry.lastAccessed < oldestTime) {
+        oldestTime = entry.lastAccessed
+        oldestKey = key
+      }
+    }
+
+    // Remove the oldest entry
+    if (oldestKey) {
+      const entry = this.imageCache.get(oldestKey)
+      if (entry) {
+        this.cleanupImageElement(entry.image)
+      }
+      this.imageCache.delete(oldestKey)
+    }
+  }
+
+  /**
+   * Touch an entry to mark it as recently used (for LRU)
+   */
+  touchCachedImage(url: string): void {
+    const entry = this.imageCache.get(url)
+    if (entry) {
+      entry.lastAccessed = Date.now()
+    }
+  }
+
+  /**
+   * Get cached image element (updates access time)
    */
   getCachedImage(url: string): HTMLImageElement | undefined {
-    return this.imageCache.get(url)
+    const entry = this.imageCache.get(url)
+    if (entry) {
+      // Update access time for LRU
+      entry.lastAccessed = Date.now()
+      return entry.image
+    }
+    return undefined
   }
 
   /**
    * Remove image from cache
    */
   removeCachedImage(url: string): void {
-    const image = this.imageCache.get(url)
-    if (image) {
-      this.cleanupImageElement(image)
+    const entry = this.imageCache.get(url)
+    if (entry) {
+      this.cleanupImageElement(entry.image)
       this.imageCache.delete(url)
     }
+  }
+
+  /**
+   * Evict entries older than specified age (in milliseconds)
+   */
+  evictOldEntries(maxAge: number = 300000): number {
+    const now = Date.now()
+    let evictedCount = 0
+
+    for (const [key, entry] of this.imageCache.entries()) {
+      if (now - entry.lastAccessed > maxAge) {
+        this.cleanupImageElement(entry.image)
+        this.imageCache.delete(key)
+        evictedCount++
+      }
+    }
+
+    return evictedCount
   }
 
   /**
@@ -94,8 +155,8 @@ export class MemoryManager {
    * Clear all cached images
    */
   clearImageCache(): void {
-    for (const [, image] of this.imageCache.entries()) {
-      this.cleanupImageElement(image)
+    for (const [, entry] of this.imageCache.entries()) {
+      this.cleanupImageElement(entry.image)
     }
     this.imageCache.clear()
   }
@@ -164,6 +225,13 @@ export class MemoryManager {
    */
   private startPeriodicCleanup(): void {
     this.cleanupInterval = window.setInterval(() => {
+      // Evict entries older than 5 minutes
+      const evicted = this.evictOldEntries(300000)
+      if (evicted > 0) {
+        console.log(`🧹 Evicted ${evicted} old cache entries`)
+      }
+
+      // If memory is still high, perform aggressive cleanup
       if (this.isMemoryUsageHigh()) {
         this.performAggressiveCleanup()
       }
