@@ -182,6 +182,14 @@
       </div>
     </div>
 
+    <!-- Group Grid Preview -->
+    <div v-else-if="selectedGroupId && selectedGroupImages.length > 0" class="group-preview-container">
+      <GroupGridPreview
+        :groupName="getGroupName(selectedGroupId)"
+        :images="selectedGroupImages"
+        @imageSelected="handleGroupImageSelected" />
+    </div>
+
     <!-- Empty State -->
     <div v-else class="empty-viewer">
       <div class="empty-content">
@@ -239,6 +247,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import type { ImageData, TabData, SessionData, FolderContext, FileEntry, TabGroup } from '../types'
+import GroupGridPreview from './GroupGridPreview.vue'
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from '../config/keyboardShortcuts'
 import { sessionService } from '../services/sessionService'
 import { memoryManager, ManagedResource } from '../utils/memoryManager'
@@ -344,6 +353,24 @@ const treeViewItems = computed((): TreeViewItem[] => {
   }
 
   return items
+})
+
+// Get images for the selected group
+const selectedGroupImages = computed((): ImageData[] => {
+  if (!selectedGroupId.value) return []
+
+  const group = tabGroups.value.get(selectedGroupId.value)
+  if (!group) return []
+
+  const images: ImageData[] = []
+  for (const tabId of group.tabIds) {
+    const tab = tabs.value.get(tabId)
+    if (tab) {
+      images.push(tab.imageData)
+    }
+  }
+
+  return images
 })
 
 const isImageCorrupted = computed(() => {
@@ -1454,6 +1481,17 @@ const selectGroupHeader = (groupId: string): void => {
   activeTabId.value = null
   selectedGroupId.value = groupId
   console.log(`Selected group header: "${getGroupName(groupId)}"`)
+}
+
+const handleGroupImageSelected = (imageId: string): void => {
+  // Find the tab with this image ID and switch to it
+  for (const tab of tabs.value.values()) {
+    if (tab.imageData.id === imageId) {
+      switchToTab(tab.id)
+      selectedGroupId.value = null
+      break
+    }
+  }
 }
 
 const moveGroupRight = (groupId: string): void => {
@@ -2969,6 +3007,12 @@ defineExpose({
 .nav-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.group-preview-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
 }
 
 .empty-viewer {
