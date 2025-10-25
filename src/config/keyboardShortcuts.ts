@@ -171,6 +171,16 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     action: 'joinWithRight',
     description: 'Join with right tab/group (gaming style)'
   },
+  {
+    key: '<',
+    action: 'joinWithLeft',
+    description: 'Join with left tab/group'
+  },
+  {
+    key: '>',
+    action: 'joinWithRight',
+    description: 'Join with right tab/group'
+  },
 
   // Zoom and Pan Controls (Windows/Linux)
   {
