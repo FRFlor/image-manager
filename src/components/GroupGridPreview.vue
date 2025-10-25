@@ -10,6 +10,26 @@
         spellcheck="false" />
       <span class="image-count">{{ images.length }} {{ images.length === 1 ? 'image' : 'images' }}</span>
     </div>
+
+    <!-- Reorder Controls (shown when an image is selected) -->
+    <div v-if="selectedImageId" class="reorder-controls">
+      <button
+        v-if="selectedImageIndex > 0"
+        @click="moveImage(selectedImageIndex, 'left')"
+        class="reorder-btn"
+        title="Move left">
+        ← Move Left
+      </button>
+      <span class="selected-image-name">{{ selectedImageName }}</span>
+      <button
+        v-if="selectedImageIndex < images.length - 1"
+        @click="moveImage(selectedImageIndex, 'right')"
+        class="reorder-btn"
+        title="Move right">
+        Move Right →
+      </button>
+    </div>
+
     <div class="grid-container">
       <div
         v-for="(image, index) in images"
@@ -25,31 +45,13 @@
           class="grid-thumbnail"
           @error="handleImageError" />
         <div class="grid-item-name">{{ image.name }}</div>
-
-        <!-- Arrow Controls (shown when highlighted) -->
-        <div v-if="selectedImageId === image.id" class="arrow-controls">
-          <button
-            v-if="index > 0"
-            @click.stop="moveImage(index, 'left')"
-            class="arrow-btn arrow-left"
-            title="Move left">
-            ←
-          </button>
-          <button
-            v-if="index < images.length - 1"
-            @click.stop="moveImage(index, 'right')"
-            class="arrow-btn arrow-right"
-            title="Move right">
-            →
-          </button>
-        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { ImageData } from '../types'
 
 // Props
@@ -68,6 +70,17 @@ const emit = defineEmits<{
 
 // State
 const selectedImageId = ref<string | null>(null)
+
+// Computed properties for selected image
+const selectedImageIndex = computed(() => {
+  if (!selectedImageId.value) return -1
+  return props.images.findIndex(img => img.id === selectedImageId.value)
+})
+
+const selectedImageName = computed(() => {
+  if (selectedImageIndex.value === -1) return ''
+  return props.images[selectedImageIndex.value]?.name || ''
+})
 
 const selectImage = (imageId: string) => {
   selectedImageId.value = imageId
@@ -105,8 +118,50 @@ const handleImageError = (event: Event) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2rem;
+  padding: 2rem 2rem 1rem 2rem;
   border-bottom: 1px solid #333;
+}
+
+.reorder-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 2rem 1rem 2rem;
+  border-bottom: 1px solid #333;
+  background: #1a1a1a;
+}
+
+.reorder-btn {
+  padding: 0.5rem 1rem;
+  background: #0ea5e9;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.reorder-btn:hover {
+  background: #0284c7;
+  transform: translateY(-1px);
+}
+
+.reorder-btn:active {
+  transform: translateY(0);
+}
+
+.selected-image-name {
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .group-name-input {
@@ -168,54 +223,6 @@ const handleImageError = (event: Event) => {
   outline: 3px solid #0ea5e9;
   outline-offset: -3px;
   box-shadow: 0 0 20px rgba(14, 165, 233, 0.5);
-}
-
-.arrow-controls {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 0.5rem;
-  pointer-events: none;
-}
-
-.arrow-btn {
-  pointer-events: auto;
-  width: 40px;
-  height: 40px;
-  background: rgba(0, 0, 0, 0.8);
-  border: 2px solid #0ea5e9;
-  border-radius: 50%;
-  color: #0ea5e9;
-  font-size: 1.25rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(4px);
-}
-
-.arrow-btn:hover {
-  background: #0ea5e9;
-  color: #fff;
-  transform: scale(1.1);
-}
-
-.arrow-btn:active {
-  transform: scale(0.95);
-}
-
-.arrow-left {
-  margin-right: auto;
-}
-
-.arrow-right {
-  margin-left: auto;
 }
 
 .grid-thumbnail {
