@@ -259,22 +259,65 @@ import { KEYBOARD_SHORTCUTS, matchesShortcut } from '../config/keyboardShortcuts
 import { sessionService } from '../services/sessionService'
 import { memoryManager, ManagedResource } from '../utils/memoryManager'
 import { lazyImageLoader } from '../utils/lazyLoader'
+import { useTabControls } from '../composables/useTabControls'
 
 // Props and Emits
 const emit = defineEmits<{
   openImageRequested: []
 }>()
 
+// Use tab controls composable
+const {
+  tabs,
+  activeTabId,
+  tabFolderContexts,
+  tabGroups,
+  selectedGroupId,
+  collapsedGroupIds,
+  contextMenuVisible,
+  contextMenuPosition,
+  contextMenuTabId,
+  sortedTabs,
+  activeTab,
+  treeViewItems,
+  openTab,
+  switchToTab: switchToTabBase,
+  closeTab: closeTabBase,
+  switchToNextTab: switchToNextTabBase,
+  switchToPreviousTab: switchToPreviousTabBase,
+  closeCurrentTab: closeCurrentTabBase,
+  clearTabs,
+  moveTab,
+  moveTabRight: moveTabRightBase,
+  moveTabLeft: moveTabLeftBase,
+  removeTabFromGroup,
+  renameGroup,
+  dissolveGroup,
+  getGroupColor,
+  getGroupName,
+  getGroupTabIds,
+  selectGroupHeader,
+  toggleGroupCollapse,
+  joinWithLeft,
+  joinWithRight,
+  setNextGroupColorIndex,
+  showTabContextMenu,
+  closeOtherTabs: closeOtherTabsBase,
+  closeTabsToRight: closeTabsToRightBase,
+  closeTabsToLeft: closeTabsToLeftBase,
+  contextMenuCreateGroupWithNext,
+  contextMenuRenameGroup: contextMenuRenameGroupBase,
+  contextMenuRemoveFromGroup: contextMenuRemoveFromGroupBase,
+  contextMenuDissolveGroup: contextMenuDissolveGroupBase
+} = useTabControls()
+
 // Reactive state
-const tabs = ref<Map<string, TabData>>(new Map())
-const activeTabId = ref<string | null>(null)
 const currentFolderImages = ref<ImageData[]>([])
 const imageContainer = ref<HTMLElement>()
 const tabContainer = ref<HTMLElement>()
 const treeItemsContainer = ref<HTMLElement>()
 
 // Lazy loading state
-const tabFolderContexts = ref<Map<string, FolderContext>>(new Map())
 const currentFileEntry = ref<FileEntry | null>(null) // Track current file even if corrupted
 
 // Performance and memory management
@@ -303,17 +346,10 @@ const layoutPosition = ref<'invisible' | 'top' | 'tree'>('tree')
 const layoutSize = ref<'small' | 'large'>('small')
 const treeCollapsed = ref(false)
 
-// Tab groups state
-const tabGroups = ref<Map<string, TabGroup>>(new Map())
-const selectedGroupId = ref<string | null>(null) // For group header selection in tree view
-const collapsedGroupIds = ref<Set<string>>(new Set()) // Track which groups are collapsed
-let nextGroupColorIndex = 0 // Alternates between blue and orange
-
 // Computed properties
 const activeImage = computed(() => {
   if (!activeTabId.value) return null
-  const tab = tabs.value.get(activeTabId.value)
-  return tab?.imageData || null
+  return activeTab.value?.imageData || null
 })
 
 const currentImageIndex = computed(() => {
@@ -338,31 +374,6 @@ const currentFolderSize = computed(() => {
   if (!activeTabId.value) return 0
   const folderContext = tabFolderContexts.value.get(activeTabId.value)
   return folderContext ? folderContext.fileEntries.length : 0
-})
-
-const sortedTabs = computed(() => {
-  return Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
-})
-
-// Tree view items with group headers
-type TreeViewItem = { type: 'group', groupId: string } | { type: 'tab', tab: TabData }
-const treeViewItems = computed((): TreeViewItem[] => {
-  const items: TreeViewItem[] = []
-  const processedGroups = new Set<string>()
-
-  for (const tab of sortedTabs.value) {
-    // If tab has a group and we haven't processed it yet, add group header
-    if (tab.groupId && !processedGroups.has(tab.groupId)) {
-      items.push({ type: 'group', groupId: tab.groupId })
-      processedGroups.add(tab.groupId)
-    }
-    // Add the tab only if its group is not collapsed (or if it has no group)
-    if (!tab.groupId || !collapsedGroupIds.value.has(tab.groupId)) {
-      items.push({ type: 'tab', tab })
-    }
-  }
-
-  return items
 })
 
 // Get images for the selected group
@@ -475,49 +486,11 @@ const loadImageMetadata = async (filePath: string, folderContext: FolderContext)
 
 // Methods
 const openImage = (imageData: ImageData, folderContext: FolderContext) => {
-  // Create a new tab for this image
-  const tabId = `tab-${Date.now()}`
-
-  // Get the active tab to check if it's in a group
-  const oldActiveTab = activeTabId.value ? tabs.value.get(activeTabId.value) : null
-  const groupId = oldActiveTab?.groupId
-
-  const tab: TabData = {
-    id: tabId,
-    title: imageData.name,
-    imageData,
-    isActive: true,
-    order: getNextTabOrder(),
-    isFullyLoaded: true, // New tabs are always fully loaded
-    groupId: groupId // Inherit group from active tab
-  }
-
-  // If adding to a group, update the group's tabIds
-  if (groupId) {
-    const group = tabGroups.value.get(groupId)
-    if (group) {
-      // Find position of old active tab in group's tabIds
-      const oldTabIndex = group.tabIds.indexOf(activeTabId.value!)
-      // Insert new tab right after the old active tab
-      group.tabIds.splice(oldTabIndex + 1, 0, tabId)
-      console.log(`Added new tab to group "${group.name}" after active tab`)
-    }
-  }
-
-  // Set all existing tabs to inactive
-  tabs.value.forEach(existingTab => {
-    existingTab.isActive = false
-  })
-
-  // Add the new tab
-  tabs.value.set(tabId, tab)
-  activeTabId.value = tabId
+  // Use composable to open tab
+  openTab(imageData, folderContext)
 
   // Scroll the new tab into view
   scrollActiveTabIntoView()
-
-  // Store folder context for this tab
-  tabFolderContexts.value.set(tabId, folderContext)
 
   // Set current file entry
   const fileEntry = folderContext.fileEntries.find(entry => entry.path === imageData.path)
@@ -529,18 +502,12 @@ const openImage = (imageData: ImageData, folderContext: FolderContext) => {
 
   // Preload adjacent images for better performance
   preloadAdjacentImagesLazy(imageData, folderContext)
-
-  console.log(`✨ Opened image: ${imageData.name}`)
-  console.log(`📁 Folder contains ${folderContext.fileEntries.length} images (${folderContext.loadedImages.size} loaded)`)
 }
 
 const switchToTab = async (tabId: string) => {
-  const tab = tabs.value.get(tabId)
-  if (!tab) return
-
   // Save current tab's zoom/pan state before switching
-  if (activeTabId.value) {
-    const currentTab = tabs.value.get(activeTabId.value)
+  const saveCurrentTabState = (currentTabId: string) => {
+    const currentTab = tabs.value.get(currentTabId)
     if (currentTab) {
       currentTab.zoomLevel = zoomLevel.value
       currentTab.fitMode = fitMode.value
@@ -548,11 +515,9 @@ const switchToTab = async (tabId: string) => {
     }
   }
 
-  // Update active states
-  tabs.value.forEach(t => { t.isActive = false })
-  tab.isActive = true
-  activeTabId.value = tabId
-  selectedGroupId.value = null // Clear group selection when switching to a tab
+  // Use composable to switch tab
+  const tab = switchToTabBase(tabId, saveCurrentTabState)
+  if (!tab) return
 
   // Scroll the active tab into view (centered)
   scrollActiveTabIntoView()
@@ -719,38 +684,18 @@ const preloadAdjacentTabs = async (currentTabId: string) => {
 }
 
 const closeTab = (tabId: string) => {
-  const tabToClose = tabs.value.get(tabId)
-  if (!tabToClose) return
-
-  // Remove from group if it's in one (this will auto-cleanup empty groups)
-  if (tabToClose.groupId) {
-    removeTabFromGroup(tabId)
+  // Clean up resources for this tab
+  const cleanup = (id: string) => {
+    cleanupTabResources(id)
   }
 
-  // Clean up resources for this tab
-  cleanupTabResources(tabId)
+  // Use composable to close tab
+  const newActiveTabId = closeTabBase(tabId, cleanup)
 
-  // Clean up folder context for this tab
-  tabFolderContexts.value.delete(tabId)
-  tabs.value.delete(tabId)
-
-  if (activeTabId.value === tabId) {
-    // Find another tab to activate - prefer the tab to the right, then left
-    const remainingTabs = Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
-    if (remainingTabs.length > 0) {
-      // Find the next tab after the closed one, or the last tab if none found
-      const closedTabOrder = tabToClose.order
-      let newActiveTab = remainingTabs.find(tab => tab.order > closedTabOrder)
-      if (!newActiveTab) {
-        newActiveTab = remainingTabs[remainingTabs.length - 1]
-      }
-      if (newActiveTab) {
-        switchToTab(newActiveTab.id)
-      }
-    } else {
-      activeTabId.value = null
-      currentFolderImages.value = []
-    }
+  if (newActiveTabId) {
+    switchToTab(newActiveTabId)
+  } else if (newActiveTabId === null) {
+    currentFolderImages.value = []
   }
 }
 
@@ -929,9 +874,6 @@ const openImageInNewTab = async () => {
   // Load next image metadata (may be null if corrupted)
   const nextImageData = await loadImageMetadata(nextEntry.path, folderContext)
 
-  // Create a new tab even if image is corrupted
-  const tabId = `tab-${Date.now()}`
-
   // Create proper placeholder for corrupted images
   const imageData: ImageData = nextImageData || {
     id: `corrupted-${nextEntry.path}`,
@@ -943,84 +885,45 @@ const openImageInNewTab = async () => {
     lastModified: nextEntry.lastModified || new Date()
   }
 
-  // Get the active tab to check if it's in a group
-  const oldActiveTab = activeTabId.value ? tabs.value.get(activeTabId.value) : null
-  const groupId = oldActiveTab?.groupId
-
-  const tab: TabData = {
-    id: tabId,
-    title: nextEntry.name,
-    imageData: imageData,
-    isActive: true, // Switch to the new tab immediately
-    order: getNextTabOrder(),
-    groupId: groupId // Inherit group from active tab
-  }
-
-  // If adding to a group, update the group's tabIds
-  if (groupId) {
-    const group = tabGroups.value.get(groupId)
-    if (group) {
-      // Find position of old active tab in group's tabIds
-      const oldTabIndex = group.tabIds.indexOf(activeTabId.value!)
-      // Insert new tab right after the old active tab
-      group.tabIds.splice(oldTabIndex + 1, 0, tabId)
-      console.log(`Added new tab to group "${group.name}" after active tab`)
-    }
-  }
-
-  // Set all existing tabs to inactive
-  tabs.value.forEach(existingTab => {
-    existingTab.isActive = false
-  })
-
-  tabs.value.set(tabId, tab)
   const oldActiveTabId = activeTabId.value
-  activeTabId.value = tabId
-
-  // Scroll the new tab into view
-  scrollActiveTabIntoView()
 
   // Create a NEW folder context for the new tab (deep clone to avoid shared references)
   const currentFolderContext = tabFolderContexts.value.get(oldActiveTabId)
   if (currentFolderContext) {
-    // Deep clone the folder context to avoid memory leaks from shared references
     const newFolderContext: FolderContext = {
-      fileEntries: currentFolderContext.fileEntries, // fileEntries are read-only, can share
-      loadedImages: new Map(currentFolderContext.loadedImages), // Clone the Map
+      fileEntries: currentFolderContext.fileEntries,
+      loadedImages: new Map(currentFolderContext.loadedImages),
       folderPath: currentFolderContext.folderPath
     }
-    tabFolderContexts.value.set(tabId, newFolderContext)
+
+    // Use composable to open the new tab
+    openTab(imageData, newFolderContext)
+
+    // Scroll the new tab into view
+    scrollActiveTabIntoView()
+
+    // Set current file entry for the new tab
+    currentFileEntry.value = nextEntry
+
+    // Update currentFolderImages
     currentFolderImages.value = Array.from(newFolderContext.loadedImages.values())
       .sort((a, b) => a.name.localeCompare(b.name))
+
+    console.log(`Opened ${nextEntry.name} in new tab and switched to it`)
   }
-
-  // Set current file entry for the new tab
-  currentFileEntry.value = nextEntry
-
-  console.log(`Opened ${nextEntry.name} in new tab and switched to it`)
 }
 
 const switchToNextTab = () => {
-  const tabArray = sortedTabs.value
-  if (tabArray.length <= 1) return
-
-  const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
-  const nextIndex = (currentIndex + 1) % tabArray.length
-  const nextTab = tabArray[nextIndex]
-  if (nextTab) {
-    switchToTab(nextTab.id)
+  const nextTabId = switchToNextTabBase()
+  if (nextTabId) {
+    switchToTab(nextTabId)
   }
 }
 
 const switchToPreviousTab = () => {
-  const tabArray = sortedTabs.value
-  if (tabArray.length <= 1) return
-
-  const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
-  const prevIndex = currentIndex === 0 ? tabArray.length - 1 : currentIndex - 1
-  const prevTab = tabArray[prevIndex]
-  if (prevTab) {
-    switchToTab(prevTab.id)
+  const prevTabId = switchToPreviousTabBase()
+  if (prevTabId) {
+    switchToTab(prevTabId)
   }
 }
 
@@ -1030,137 +933,73 @@ const createNewTab = () => {
 }
 
 const closeCurrentTab = () => {
-  if (activeTabId.value) {
-    closeTab(activeTabId.value)
+  const tabIdToClose = closeCurrentTabBase()
+  if (tabIdToClose) {
+    closeTab(tabIdToClose)
   }
 }
 
-// Context menu functionality
-const contextMenuVisible = ref(false)
-const contextMenuPosition = ref({ x: 0, y: 0 })
-const contextMenuTabId = ref<string | null>(null)
-
-const showTabContextMenu = (event: MouseEvent, tabId: string) => {
-  contextMenuPosition.value = { x: event.clientX, y: event.clientY }
-  contextMenuTabId.value = tabId
-  contextMenuVisible.value = true
-
-  // Close context menu when clicking elsewhere
-  const closeContextMenu = () => {
-    contextMenuVisible.value = false
-    document.removeEventListener('click', closeContextMenu)
-  }
-
-  setTimeout(() => {
-    document.addEventListener('click', closeContextMenu)
-  }, 0)
-}
-
+// Context menu wrappers
 const closeOtherTabs = () => {
-  if (!contextMenuTabId.value) return
-
-  const tabsToClose = Array.from(tabs.value.keys()).filter(id => id !== contextMenuTabId.value)
-  tabsToClose.forEach(tabId => closeTab(tabId))
+  const tabsToClose = closeOtherTabsBase()
+  if (tabsToClose) {
+    tabsToClose.forEach(tabId => closeTab(tabId))
+  }
   contextMenuVisible.value = false
 }
 
 const closeTabsToRight = () => {
-  if (!contextMenuTabId.value) return
-
-  const tabArray = sortedTabs.value
-  const contextTabIndex = tabArray.findIndex(tab => tab.id === contextMenuTabId.value)
-
-  if (contextTabIndex >= 0) {
-    const tabsToClose = tabArray.slice(contextTabIndex + 1)
-    tabsToClose.forEach(tab => closeTab(tab.id))
+  const tabsToClose = closeTabsToRightBase()
+  if (tabsToClose) {
+    tabsToClose.forEach(tabId => closeTab(tabId))
   }
   contextMenuVisible.value = false
 }
 
 const closeTabsToLeft = () => {
-  if (!contextMenuTabId.value) return
-
-  const tabArray = sortedTabs.value
-  const contextTabIndex = tabArray.findIndex(tab => tab.id === contextMenuTabId.value)
-
-  if (contextTabIndex >= 0) {
-    const tabsToClose = tabArray.slice(0, contextTabIndex)
-    tabsToClose.forEach(tab => closeTab(tab.id))
+  const tabsToClose = closeTabsToLeftBase()
+  if (tabsToClose) {
+    tabsToClose.forEach(tabId => closeTab(tabId))
   }
   contextMenuVisible.value = false
 }
 
-// Group management context menu handlers
-const contextMenuCreateGroupWithNext = () => {
-  if (!contextMenuTabId.value) return
-
-  const tabArray = sortedTabs.value
-  const currentIndex = tabArray.findIndex(tab => tab.id === contextMenuTabId.value)
-
-  if (currentIndex === -1 || currentIndex >= tabArray.length - 1) {
-    console.log('Cannot create group: no next tab')
-    contextMenuVisible.value = false
-    return
-  }
-
-  const currentTab = tabArray[currentIndex]
-  const nextTab = tabArray[currentIndex + 1]
-
-  if (currentTab && nextTab) {
-    const groupName = `Group ${tabGroups.value.size + 1}`
-    createGroup(groupName, [currentTab.id, nextTab.id])
-    console.log(`✅ Created group "${groupName}" with "${currentTab.title}" and "${nextTab.title}"`)
-  }
-
-  contextMenuVisible.value = false
-}
-
+// Group management context menu wrappers
 const contextMenuRenameGroup = () => {
-  if (!contextMenuTabId.value) return
-
-  const tab = tabs.value.get(contextMenuTabId.value)
-  if (!tab || !tab.groupId) return
-
-  const group = tabGroups.value.get(tab.groupId)
-  if (!group) return
+  const groupInfo = contextMenuRenameGroupBase()
+  if (!groupInfo) return
 
   // Use a simple prompt for now (works in Tauri)
-  const newName = window.prompt(`Rename group "${group.name}":`, group.name)
+  const newName = window.prompt(`Rename group "${groupInfo.currentName}":`, groupInfo.currentName)
   if (newName && newName.trim() !== '') {
-    renameGroup(group.id, newName.trim())
+    renameGroup(groupInfo.groupId, newName.trim())
   }
 
   contextMenuVisible.value = false
 }
 
 const contextMenuRemoveFromGroup = () => {
-  if (!contextMenuTabId.value) return
+  const tabIdToRemove = contextMenuRemoveFromGroupBase()
+  if (!tabIdToRemove) return
 
-  const tab = tabs.value.get(contextMenuTabId.value)
-  if (!tab || !tab.groupId) return
-
-  const group = tabGroups.value.get(tab.groupId)
+  const tab = tabs.value.get(tabIdToRemove)
+  const group = tab?.groupId ? tabGroups.value.get(tab.groupId) : null
   const groupName = group?.name || 'group'
 
-  removeTabFromGroup(contextMenuTabId.value)
+  removeTabFromGroup(tabIdToRemove)
   console.log(`✅ Removed tab from "${groupName}"`)
 
   contextMenuVisible.value = false
 }
 
 const contextMenuDissolveGroup = () => {
-  if (!contextMenuTabId.value) return
+  const groupInfo = contextMenuDissolveGroupBase()
+  if (!groupInfo) return
 
-  const tab = tabs.value.get(contextMenuTabId.value)
-  if (!tab || !tab.groupId) return
-
-  const group = tabGroups.value.get(tab.groupId)
-  if (!group) return
-
-  const confirmDissolve = window.confirm(`Dissolve group "${group.name}"? All ${group.tabIds.length} tabs will be ungrouped.`)
+  const confirmDissolve = window.confirm(`Dissolve group "${groupInfo.groupName}"? All ${groupInfo.tabCount} tabs will be ungrouped.`)
   if (confirmDissolve) {
-    dissolveGroup(group.id)
-    console.log(`✅ Dissolved group "${group.name}"`)
+    dissolveGroup(groupInfo.groupId)
+    console.log(`✅ Dissolved group "${groupInfo.groupName}"`)
   }
 
   contextMenuVisible.value = false
@@ -1174,360 +1013,16 @@ const formatFileSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
-// Tab reordering functionality
-const getNextTabOrder = (): number => {
-  if (tabs.value.size === 0) return 0
-
-  // If there's an active tab, insert after it
-  if (activeTabId.value) {
-    const activeTab = tabs.value.get(activeTabId.value)
-    if (activeTab) {
-      const newOrder = activeTab.order + 1
-
-      // Shift all tabs after this position up by 1
-      Array.from(tabs.value.values()).forEach(tab => {
-        if (tab.order >= newOrder) {
-          tab.order = tab.order + 1
-        }
-      })
-
-      return newOrder
-    }
-  }
-
-  // Fallback: add at the end
-  const maxOrder = Math.max(...Array.from(tabs.value.values()).map(tab => tab.order))
-  return maxOrder + 1
-}
-
-const moveTab = (direction: 'left'|'right', tabId: string|null = null) => {
-  if (direction === 'left') {
-    return moveTabLeft(tabId)
-  }
-
-  return moveTabRight(tabId)
-}
-
+// Tab reordering wrappers (use composable)
 const moveTabRight = (tabId: string|null = null) => {
-  // Case B: Group header is selected - move entire group
-  if (selectedGroupId.value && !tabId) {
-    moveGroupRight(selectedGroupId.value)
-    return
-  }
-
-  const targetTabId = tabId ?? activeTabId.value;
-
-  if (!targetTabId) return
-
-  const targetTab = tabs.value.get(targetTabId)
-  if (!targetTab) return
-
-  const allTabs = sortedTabs.value
-  const currentIndex = allTabs.findIndex(tab => tab.id === targetTabId)
-  if (currentIndex === -1 || currentIndex >= allTabs.length - 1) return
-
-  // Case C: Grouped tab is active - move within group only
-  if (targetTab.groupId) {
-    const groupTabs = allTabs.filter(tab => tab.groupId === targetTab.groupId)
-    const groupIndex = groupTabs.findIndex(tab => tab.id === targetTabId)
-
-    console.log(`Moving tab within group: groupIndex=${groupIndex}, groupSize=${groupTabs.length}`)
-
-    // C.2: If at right end of group, do nothing
-    if (groupIndex >= groupTabs.length - 1) {
-      console.log('Cannot move: tab is at the right end of its group')
-      return
-    }
-
-    // Move within group
-    const rightGroupTab = groupTabs[groupIndex + 1]
-    if (rightGroupTab) {
-      const tempOrder = targetTab.order
-      targetTab.order = rightGroupTab.order
-      rightGroupTab.order = tempOrder
-      console.log(`Moved tab "${targetTab.title}" to the right within group (swapped orders: ${tempOrder} <-> ${rightGroupTab.order})`)
-    }
-    return
-  }
-
-  // Case A: Ungrouped tab - swap with right tab/group
-  const rightTab = allTabs[currentIndex + 1]
-  if (!rightTab) return
-
-  // If right is a group, find all tabs in that group and swap orders
-  if (rightTab.groupId) {
-    const rightGroupTabs = allTabs.filter(tab => tab.groupId === rightTab.groupId)
-    const maxGroupOrder = Math.max(...rightGroupTabs.map(t => t.order))
-
-    // Move active tab to after the group ends
-    targetTab.order = maxGroupOrder
-
-    // Shift all group tabs down by 1
-    rightGroupTabs.forEach(tab => {
-      tab.order = tab.order - 1
-    })
-
-    console.log(`Moved ungrouped tab "${targetTab.title}" past group to the right`)
-  } else {
-    // Simple swap with ungrouped tab
-    const tempOrder = targetTab.order
-    targetTab.order = rightTab.order
-    rightTab.order = tempOrder
-    console.log(`Moved tab "${targetTab.title}" to the right`)
-  }
+  moveTabRightBase(tabId)
 }
 
 const moveTabLeft = (tabId: string|null = null) => {
-  // Case B: Group header is selected - move entire group
-  if (selectedGroupId.value && !tabId) {
-    moveGroupLeft(selectedGroupId.value)
-    return
-  }
-
-  const targetTabId = tabId ?? activeTabId.value;
-
-  if (!targetTabId) return
-
-  const targetTab = tabs.value.get(targetTabId)
-  if (!targetTab) return
-
-  const allTabs = sortedTabs.value
-  const currentIndex = allTabs.findIndex(tab => tab.id === targetTabId)
-  if (currentIndex === -1 || currentIndex <= 0) return
-
-  // Case C: Grouped tab is active - move within group only
-  if (targetTab.groupId) {
-    const groupTabs = allTabs.filter(tab => tab.groupId === targetTab.groupId)
-    const groupIndex = groupTabs.findIndex(tab => tab.id === targetTabId)
-
-    console.log(`Moving tab within group: groupIndex=${groupIndex}, groupSize=${groupTabs.length}`)
-
-    // C.1: If at left end of group, do nothing
-    if (groupIndex <= 0) {
-      console.log('Cannot move: tab is at the left end of its group')
-      return
-    }
-
-    // Move within group
-    const leftGroupTab = groupTabs[groupIndex - 1]
-    if (leftGroupTab) {
-      const tempOrder = targetTab.order
-      targetTab.order = leftGroupTab.order
-      leftGroupTab.order = tempOrder
-      console.log(`Moved tab "${targetTab.title}" to the left within group (swapped orders: ${tempOrder} <-> ${leftGroupTab.order})`)
-    }
-    return
-  }
-
-  // Case A: Ungrouped tab - swap with left tab/group
-  const leftTab = allTabs[currentIndex - 1]
-  if (!leftTab) return
-
-  // If left is a group, find all tabs in that group and swap orders
-  if (leftTab.groupId) {
-    const leftGroupTabs = allTabs.filter(tab => tab.groupId === leftTab.groupId)
-    const minGroupOrder = Math.min(...leftGroupTabs.map(t => t.order))
-
-    // Move active tab to before the group starts
-    targetTab.order = minGroupOrder
-
-    // Shift all group tabs up by 1
-    leftGroupTabs.forEach(tab => {
-      tab.order = tab.order + 1
-    })
-
-    console.log(`Moved ungrouped tab "${targetTab.title}" past group to the left`)
-  } else {
-    // Simple swap with ungrouped tab
-    const tempOrder = targetTab.order
-    targetTab.order = leftTab.order
-    leftTab.order = tempOrder
-    console.log(`Moved tab "${targetTab.title}" to the left`)
-  }
+  moveTabLeftBase(tabId)
 }
 
-// Tab group management functionality
-const createGroup = (name: string, tabIds: string[]): TabGroup => {
-  const groupId = `group-${Date.now()}`
-  const color: 'blue' | 'orange' = nextGroupColorIndex % 2 === 0 ? 'blue' : 'orange'
-  nextGroupColorIndex++
-
-  const group: TabGroup = {
-    id: groupId,
-    name,
-    color,
-    order: getNextTabOrder(),
-    tabIds: [...tabIds],
-    collapsed: false
-  }
-
-  tabGroups.value.set(groupId, group)
-
-  // Assign groupId to all tabs
-  tabIds.forEach(tabId => {
-    const tab = tabs.value.get(tabId)
-    if (tab) {
-      tab.groupId = groupId
-    }
-  })
-
-  console.log(`Created group "${name}" with ${tabIds.length} tabs`)
-  return group
-}
-
-// @ts-ignore - Function reserved for future drag-to-group feature
-const addTabToGroup = (tabId: string, groupId: string): void => {
-  const group = tabGroups.value.get(groupId)
-  const tab = tabs.value.get(tabId)
-
-  if (!group || !tab) return
-
-  // Remove from existing group if any
-  if (tab.groupId) {
-    removeTabFromGroup(tabId)
-  }
-
-  // Add to new group
-  tab.groupId = groupId
-  if (!group.tabIds.includes(tabId)) {
-    group.tabIds.push(tabId)
-  }
-
-  console.log(`Added tab "${tab.title}" to group "${group.name}"`)
-}
-
-const removeTabFromGroup = (tabId: string): void => {
-  const tab = tabs.value.get(tabId)
-  if (!tab || !tab.groupId) return
-
-  const group = tabGroups.value.get(tab.groupId)
-  if (!group) return
-
-  // Find the position of this tab within the group
-  const tabIndex = group.tabIds.indexOf(tabId)
-  if (tabIndex === -1) return
-
-  // Check if removing this tab will split the group
-  const isInMiddle = tabIndex > 0 && tabIndex < group.tabIds.length - 1
-
-  if (isInMiddle) {
-    // Split the group into two
-    const tabsBefore = group.tabIds.slice(0, tabIndex)
-    const tabsAfter = group.tabIds.slice(tabIndex + 1)
-
-    console.log(`Splitting group "${group.name}": [${tabsBefore.length}] + removed + [${tabsAfter.length}]`)
-
-    // Keep tabs before in the original group
-    group.tabIds = tabsBefore
-
-    // Create a new group for tabs after
-    if (tabsAfter.length > 0) {
-      const newGroupName = `${group.name} (split)`
-      const newGroup = createGroup(newGroupName, tabsAfter)
-      console.log(`Created new group "${newGroup.name}" with ${tabsAfter.length} tabs after split`)
-
-      // Auto-dissolve if the new group has only 1 tab
-      autoDissolveSmallGroups(newGroup.id)
-    }
-
-    // Auto-dissolve original group if it now has only 1 tab
-    autoDissolveSmallGroups(group.id)
-  } else {
-    // Tab is at the beginning or end, just remove it
-    group.tabIds = group.tabIds.filter(id => id !== tabId)
-    console.log(`Removed tab "${tab.title}" from ${tabIndex === 0 ? 'beginning' : 'end'} of group "${group.name}"`)
-
-    // Auto-cleanup: delete group if empty or only 1 tab remains
-    if (group.tabIds.length === 0) {
-      tabGroups.value.delete(group.id)
-      if (selectedGroupId.value === group.id) {
-        selectedGroupId.value = null
-      }
-      console.log(`Auto-deleted empty group "${group.name}"`)
-    } else {
-      // Auto-dissolve if only 1 tab remains
-      autoDissolveSmallGroups(group.id)
-    }
-  }
-
-  tab.groupId = undefined
-}
-
-const renameGroup = (groupId: string, newName: string): void => {
-  const group = tabGroups.value.get(groupId)
-  if (!group) return
-
-  console.log(`Renamed group from "${group.name}" to "${newName}"`)
-  group.name = newName
-}
-
-const dissolveGroup = (groupId: string): void => {
-  const group = tabGroups.value.get(groupId)
-  if (!group) return
-
-  // Remove groupId from all tabs in the group
-  group.tabIds.forEach(tabId => {
-    const tab = tabs.value.get(tabId)
-    if (tab) {
-      tab.groupId = undefined
-    }
-  })
-
-  tabGroups.value.delete(groupId)
-  if (selectedGroupId.value === groupId) {
-    selectedGroupId.value = null
-  }
-
-  console.log(`Dissolved group "${group.name}"`)
-}
-
-// Auto-dissolve groups with only 1 tab
-const autoDissolveSmallGroups = (groupId: string): void => {
-  const group = tabGroups.value.get(groupId)
-  if (!group) return
-
-  if (group.tabIds.length <= 1) {
-    console.log(`Auto-dissolving group "${group.name}" (only ${group.tabIds.length} tab remaining)`)
-    dissolveGroup(groupId)
-  }
-}
-
-const getGroupColor = (groupId: string): 'blue' | 'orange' | null => {
-  const group = tabGroups.value.get(groupId)
-  return group ? group.color : null
-}
-
-const getGroupName = (groupId: string): string => {
-  const group = tabGroups.value.get(groupId)
-  return group ? group.name : 'Unknown Group'
-}
-
-const getGroupTabIds = (groupId: string): string[] => {
-  const group = tabGroups.value.get(groupId)
-  if (!group) return []
-
-  // Get tabs and sort by order property to match visual tab order
-  const groupTabs: TabData[] = []
-  for (const tabId of group.tabIds) {
-    const tab = tabs.value.get(tabId)
-    if (tab) {
-      groupTabs.push(tab)
-    }
-  }
-
-  // Sort by order property (same as sortedTabs)
-  groupTabs.sort((a, b) => a.order - b.order)
-
-  return groupTabs.map(tab => tab.id)
-}
-
-const selectGroupHeader = (groupId: string): void => {
-  // Clear active tab selection when selecting a group header
-  activeTabId.value = null
-  selectedGroupId.value = groupId
-  console.log(`Selected group header: "${getGroupName(groupId)}"`)
-}
-
+// Keep handleGroupImageSelected as it uses local switchToTab
 const handleGroupImageSelected = (imageId: string): void => {
   // Find the tab with this image ID and switch to it
   for (const tab of tabs.value.values()) {
@@ -1535,280 +1030,6 @@ const handleGroupImageSelected = (imageId: string): void => {
       switchToTab(tab.id)
       selectedGroupId.value = null
       break
-    }
-  }
-}
-
-const moveGroupRight = (groupId: string): void => {
-  const group = tabGroups.value.get(groupId)
-  if (!group) return
-
-  const allTabs = sortedTabs.value
-  const groupTabs = allTabs.filter(tab => tab.groupId === groupId)
-
-  if (groupTabs.length === 0) return
-
-  // Find rightmost tab in group
-  const lastGroupTab = groupTabs[groupTabs.length - 1]
-  if (!lastGroupTab) return
-  const lastGroupIndex = allTabs.findIndex(t => t.id === lastGroupTab.id)
-
-  if (lastGroupIndex >= allTabs.length - 1) return // Already at end
-
-  const rightTab = allTabs[lastGroupIndex + 1]
-  if (!rightTab) return
-
-  // If right tab is also in this group, we're done (can't move within group)
-  if (rightTab.groupId === groupId) return
-
-  // Check if right target is also a group
-  if (rightTab.groupId) {
-    // Swap entire groups
-    const rightGroupTabs = allTabs.filter(tab => tab.groupId === rightTab.groupId)
-    const minGroupOrder = Math.min(...groupTabs.map(t => t.order))
-    const minRightGroupOrder = Math.min(...rightGroupTabs.map(t => t.order))
-    const groupSize = groupTabs.length
-    const rightGroupSize = rightGroupTabs.length
-
-    // Shift our group right by the size of the right group
-    groupTabs.forEach(tab => {
-      tab.order = tab.order + rightGroupSize
-    })
-
-    // Shift right group left by our size
-    rightGroupTabs.forEach(tab => {
-      tab.order = tab.order - groupSize
-    })
-
-    console.log(`Moved group "${group.name}" to the right (swapped with group)`)
-  } else {
-    // Swap with single ungrouped tab
-    const minGroupOrder = Math.min(...groupTabs.map(t => t.order))
-
-    // Move the right tab to where the group started
-    rightTab.order = minGroupOrder
-
-    // Shift all group tabs' orders to the right by 1
-    groupTabs.forEach(tab => {
-      tab.order = tab.order + 1
-    })
-
-    console.log(`Moved group "${group.name}" to the right (swapped with tab)`)
-  }
-}
-
-const moveGroupLeft = (groupId: string): void => {
-  const group = tabGroups.value.get(groupId)
-  if (!group) return
-
-  const allTabs = sortedTabs.value
-  const groupTabs = allTabs.filter(tab => tab.groupId === groupId)
-
-  if (groupTabs.length === 0) return
-
-  // Find leftmost tab in group
-  const firstGroupTab = groupTabs[0]
-  if (!firstGroupTab) return
-  const firstGroupIndex = allTabs.findIndex(t => t.id === firstGroupTab.id)
-
-  if (firstGroupIndex <= 0) return // Already at start
-
-  const leftTab = allTabs[firstGroupIndex - 1]
-  if (!leftTab) return
-
-  // If left tab is also in this group, we're done (can't move within group)
-  if (leftTab.groupId === groupId) return
-
-  // Check if left target is also a group
-  if (leftTab.groupId) {
-    // Swap entire groups
-    const leftGroupTabs = allTabs.filter(tab => tab.groupId === leftTab.groupId)
-    const maxGroupOrder = Math.max(...groupTabs.map(t => t.order))
-    const maxLeftGroupOrder = Math.max(...leftGroupTabs.map(t => t.order))
-    const groupSize = groupTabs.length
-    const leftGroupSize = leftGroupTabs.length
-
-    // Shift our group left by the size of the left group
-    groupTabs.forEach(tab => {
-      tab.order = tab.order - leftGroupSize
-    })
-
-    // Shift left group right by our size
-    leftGroupTabs.forEach(tab => {
-      tab.order = tab.order + groupSize
-    })
-
-    console.log(`Moved group "${group.name}" to the left (swapped with group)`)
-  } else {
-    // Swap with single ungrouped tab
-    const maxGroupOrder = Math.max(...groupTabs.map(t => t.order))
-
-    // Move the left tab to where the group ended
-    leftTab.order = maxGroupOrder
-
-    // Shift all group tabs' orders to the left by 1
-    groupTabs.forEach(tab => {
-      tab.order = tab.order - 1
-    })
-
-    console.log(`Moved group "${group.name}" to the left (swapped with tab)`)
-  }
-}
-
-// Join with left tab/group (Ctrl+Left)
-const joinWithLeft = (): void => {
-  // Case B: Group header is selected - merge left tab/group into this group
-  if (selectedGroupId.value) {
-    const group = tabGroups.value.get(selectedGroupId.value)
-    if (!group) return
-
-    const allTabs = sortedTabs.value
-    const groupTabs = allTabs.filter(tab => tab.groupId === selectedGroupId.value)
-    if (groupTabs.length === 0) return
-
-    const firstGroupIndex = allTabs.findIndex(t => t.id === groupTabs[0]!.id)
-    if (firstGroupIndex <= 0) return
-
-    const leftTarget = allTabs[firstGroupIndex - 1]
-    if (!leftTarget) return
-
-    // If left target is in a group, merge all its group tabs
-    if (leftTarget.groupId) {
-      const leftGroupId = leftTarget.groupId // Capture BEFORE modifying
-      const leftGroupTabs = allTabs.filter(tab => tab.groupId === leftGroupId)
-      leftGroupTabs.forEach(tab => {
-        tab.groupId = selectedGroupId.value!
-        if (!group.tabIds.includes(tab.id)) {
-          group.tabIds.push(tab.id)
-        }
-      })
-      // Delete the left group
-      tabGroups.value.delete(leftGroupId)
-      console.log(`Merged left group into "${group.name}"`)
-      // Auto-dissolve if the merged group ends up with only 1 tab
-      autoDissolveSmallGroups(selectedGroupId.value!)
-    } else {
-      // Just merge the single left tab
-      leftTarget.groupId = selectedGroupId.value!
-      if (!group.tabIds.includes(leftTarget.id)) {
-        group.tabIds.push(leftTarget.id)
-      }
-      console.log(`Merged left tab "${leftTarget.title}" into "${group.name}"`)
-    }
-    return
-  }
-
-  // Case C: Grouped tab is active - do nothing
-  if (activeTabId.value) {
-    const activeTab = tabs.value.get(activeTabId.value)
-    if (!activeTab) return
-
-    if (activeTab.groupId) {
-      console.log('Cannot join: active tab is already in a group')
-      return
-    }
-
-    // Case A: Ungrouped tab is active
-    const allTabs = sortedTabs.value
-    const currentIndex = allTabs.findIndex(tab => tab.id === activeTabId.value)
-    if (currentIndex <= 0) return
-
-    const leftTab = allTabs[currentIndex - 1]
-    if (!leftTab) return
-
-    // If left tab has a group, join it
-    if (leftTab.groupId) {
-      const group = tabGroups.value.get(leftTab.groupId)
-      if (group) {
-        activeTab.groupId = leftTab.groupId
-        if (!group.tabIds.includes(activeTab.id)) {
-          group.tabIds.push(activeTab.id)
-        }
-        console.log(`Joined "${activeTab.title}" to group "${group.name}"`)
-      }
-    } else {
-      // Create new group with both tabs
-      const newGroup = createGroup(`Group ${tabGroups.value.size + 1}`, [leftTab.id, activeTab.id])
-      console.log(`Created new group "${newGroup.name}" with left tab and active tab`)
-    }
-  }
-}
-
-// Join with right tab/group (Ctrl+Right)
-const joinWithRight = (): void => {
-  // Case B: Group header is selected - merge right tab/group into this group
-  if (selectedGroupId.value) {
-    const group = tabGroups.value.get(selectedGroupId.value)
-    if (!group) return
-
-    const allTabs = sortedTabs.value
-    const groupTabs = allTabs.filter(tab => tab.groupId === selectedGroupId.value)
-    if (groupTabs.length === 0) return
-
-    const lastGroupIndex = allTabs.findIndex(t => t.id === groupTabs[groupTabs.length - 1]!.id)
-    if (lastGroupIndex >= allTabs.length - 1) return
-
-    const rightTarget = allTabs[lastGroupIndex + 1]
-    if (!rightTarget) return
-
-    // If right target is in a group, merge all its group tabs
-    if (rightTarget.groupId) {
-      const rightGroupId = rightTarget.groupId // Capture BEFORE modifying
-      const rightGroupTabs = allTabs.filter(tab => tab.groupId === rightGroupId)
-      rightGroupTabs.forEach(tab => {
-        tab.groupId = selectedGroupId.value!
-        if (!group.tabIds.includes(tab.id)) {
-          group.tabIds.push(tab.id)
-        }
-      })
-      // Delete the right group
-      tabGroups.value.delete(rightGroupId)
-      console.log(`Merged right group into "${group.name}"`)
-      // Auto-dissolve if the merged group ends up with only 1 tab
-      autoDissolveSmallGroups(selectedGroupId.value!)
-    } else {
-      // Just merge the single right tab
-      rightTarget.groupId = selectedGroupId.value!
-      if (!group.tabIds.includes(rightTarget.id)) {
-        group.tabIds.push(rightTarget.id)
-      }
-      console.log(`Merged right tab "${rightTarget.title}" into "${group.name}"`)
-    }
-    return
-  }
-
-  // Case C: Grouped tab is active - do nothing
-  if (activeTabId.value) {
-    const activeTab = tabs.value.get(activeTabId.value)
-    if (!activeTab) return
-
-    if (activeTab.groupId) {
-      console.log('Cannot join: active tab is already in a group')
-      return
-    }
-
-    // Case A: Ungrouped tab is active
-    const allTabs = sortedTabs.value
-    const currentIndex = allTabs.findIndex(tab => tab.id === activeTabId.value)
-    if (currentIndex >= allTabs.length - 1) return
-
-    const rightTab = allTabs[currentIndex + 1]
-    if (!rightTab) return
-
-    // If right tab has a group, join it
-    if (rightTab.groupId) {
-      const group = tabGroups.value.get(rightTab.groupId)
-      if (group) {
-        activeTab.groupId = rightTab.groupId
-        if (!group.tabIds.includes(activeTab.id)) {
-          group.tabIds.push(activeTab.id)
-        }
-        console.log(`Joined "${activeTab.title}" to group "${group.name}"`)
-      }
-    } else {
-      // Create new group with both tabs
-      const newGroup = createGroup(`Group ${tabGroups.value.size + 1}`, [activeTab.id, rightTab.id])
-      console.log(`Created new group "${newGroup.name}" with active tab and right tab`)
     }
   }
 }
@@ -2082,16 +1303,7 @@ const toggleTreeCollapse = () => {
   console.log(`Tree ${treeCollapsed.value ? 'collapsed' : 'expanded'}`)
 }
 
-// Toggle group collapsed state
-const toggleGroupCollapse = (groupId: string) => {
-  if (collapsedGroupIds.value.has(groupId)) {
-    collapsedGroupIds.value.delete(groupId)
-    console.log(`Group ${groupId} expanded`)
-  } else {
-    collapsedGroupIds.value.add(groupId)
-    console.log(`Group ${groupId} collapsed`)
-  }
-}
+// toggleGroupCollapse is provided by the composable
 
 
 // Enhanced keyboard navigation using configuration
@@ -2254,12 +1466,8 @@ const createSessionData = (): SessionData => {
 
 const restoreFromSession = async (sessionData: SessionData) => {
   try {
-    // Clear existing tabs and groups
-    tabs.value.clear()
-    tabFolderContexts.value.clear()
-    tabGroups.value.clear()
-    activeTabId.value = null
-    selectedGroupId.value = null
+    // Clear existing tabs and groups using composable
+    clearTabs()
     currentFolderImages.value = []
 
     // Import invoke here to avoid unused import warning
@@ -2284,9 +1492,9 @@ const restoreFromSession = async (sessionData: SessionData) => {
       }
 
       // Update the nextGroupColorIndex to continue from where we left off
-      nextGroupColorIndex = sessionData.groups.length
+      setNextGroupColorIndex(sessionData.groups.length)
 
-      console.log(`✅ Restored ${sessionData.groups.length} tab groups, nextGroupColorIndex=${nextGroupColorIndex}`)
+      console.log(`✅ Restored ${sessionData.groups.length} tab groups`)
     } else {
       console.log('ℹ️ No groups found in session data')
     }
