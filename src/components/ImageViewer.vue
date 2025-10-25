@@ -187,6 +187,7 @@
       <GroupGridPreview
         :groupName="getGroupName(selectedGroupId)"
         :images="selectedGroupImages"
+        :tabIds="getGroupTabIds(selectedGroupId)"
         @imageSelected="handleGroupImageSelected"
         @nameChanged="(newName) => renameGroup(selectedGroupId!, newName)"
         @imageReordered="(direction, tabId) => moveTab(direction, tabId)" />
@@ -364,15 +365,19 @@ const selectedGroupImages = computed((): ImageData[] => {
   const group = tabGroups.value.get(selectedGroupId.value)
   if (!group) return []
 
-  const images: ImageData[] = []
+  // Get tabs and sort by order property to match visual tab order
+  const groupTabs: TabData[] = []
   for (const tabId of group.tabIds) {
     const tab = tabs.value.get(tabId)
     if (tab) {
-      images.push(tab.imageData)
+      groupTabs.push(tab)
     }
   }
 
-  return images
+  // Sort by order property (same as sortedTabs)
+  groupTabs.sort((a, b) => a.order - b.order)
+
+  return groupTabs.map(tab => tab.imageData)
 })
 
 const isImageCorrupted = computed(() => {
@@ -1198,7 +1203,7 @@ const moveTab = (direction: 'left'|'right', tabId: string|null = null) => {
 
 const moveTabRight = (tabId: string|null = null) => {
   // Case B: Group header is selected - move entire group
-  if (selectedGroupId.value) {
+  if (selectedGroupId.value && !tabId) {
     moveGroupRight(selectedGroupId.value)
     return
   }
@@ -1267,7 +1272,7 @@ const moveTabRight = (tabId: string|null = null) => {
 
 const moveTabLeft = (tabId: string|null = null) => {
   // Case B: Group header is selected - move entire group
-  if (selectedGroupId.value) {
+  if (selectedGroupId.value && !tabId) {
     moveGroupLeft(selectedGroupId.value)
     return
   }
@@ -1488,6 +1493,11 @@ const getGroupColor = (groupId: string): 'blue' | 'orange' | null => {
 const getGroupName = (groupId: string): string => {
   const group = tabGroups.value.get(groupId)
   return group ? group.name : 'Unknown Group'
+}
+
+const getGroupTabIds = (groupId: string): string[] => {
+  const group = tabGroups.value.get(groupId)
+  return group ? group.tabIds : []
 }
 
 const selectGroupHeader = (groupId: string): void => {

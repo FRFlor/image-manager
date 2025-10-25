@@ -53,16 +53,17 @@ import { ref } from 'vue'
 import type { ImageData } from '../types'
 
 // Props
-defineProps<{
+const props = defineProps<{
   groupName: string
   images: ImageData[]
+  tabIds: string[] // Tab IDs corresponding to images array
 }>()
 
 // Emits
 const emit = defineEmits<{
   imageSelected: [imageId: string]
   nameChanged: [newName: string]
-  imageReordered: [fromIndex: number, toIndex: number]
+  imageReordered: [direction: 'left' | 'right', tabId: string]
 }>()
 
 // State
@@ -73,8 +74,10 @@ const selectImage = (imageId: string) => {
 }
 
 const moveImage = (fromIndex: number, direction: 'left' | 'right') => {
-
-  emit('imageReordered', direction, tabId)
+  const tabId = props.tabIds[fromIndex]
+  if (tabId) {
+    emit('imageReordered', direction, tabId)
+  }
 }
 
 const handleNameChange = (event: Event) => {
