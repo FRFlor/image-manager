@@ -188,7 +188,8 @@
         :groupName="getGroupName(selectedGroupId)"
         :images="selectedGroupImages"
         @imageSelected="handleGroupImageSelected"
-        @nameChanged="(newName) => renameGroup(selectedGroupId!, newName)" />
+        @nameChanged="(newName) => renameGroup(selectedGroupId!, newName)"
+        @imageReordered="(direction, tabId) => moveTab(direction, tabId)" />
     </div>
 
     <!-- Empty State -->
@@ -1187,25 +1188,35 @@ const getNextTabOrder = (): number => {
   return maxOrder + 1
 }
 
-const moveTabRight = () => {
+const moveTab = (direction: 'left'|'right', tabId: string|null = null) => {
+  if (direction === 'left') {
+    return moveTabLeft(tabId)
+  }
+
+  return moveTabRight(tabId)
+}
+
+const moveTabRight = (tabId: string|null = null) => {
   // Case B: Group header is selected - move entire group
   if (selectedGroupId.value) {
     moveGroupRight(selectedGroupId.value)
     return
   }
 
-  if (!activeTabId.value) return
+  const targetTabId = tabId ?? activeTabId.value;
 
-  const activeTab = tabs.value.get(activeTabId.value)
-  if (!activeTab) return
+  if (!targetTabId) return
+
+  const targetTab = tabs.value.get(targetTabId)
+  if (!targetTab) return
 
   const allTabs = sortedTabs.value
   const currentIndex = allTabs.findIndex(tab => tab.id === activeTabId.value)
   if (currentIndex === -1 || currentIndex >= allTabs.length - 1) return
 
   // Case C: Grouped tab is active - move within group only
-  if (activeTab.groupId) {
-    const groupTabs = allTabs.filter(tab => tab.groupId === activeTab.groupId)
+  if (targetTab.groupId) {
+    const groupTabs = allTabs.filter(tab => tab.groupId === targetTab.groupId)
     const groupIndex = groupTabs.findIndex(tab => tab.id === activeTabId.value)
 
     console.log(`Moving tab within group: groupIndex=${groupIndex}, groupSize=${groupTabs.length}`)
@@ -1219,10 +1230,10 @@ const moveTabRight = () => {
     // Move within group
     const rightGroupTab = groupTabs[groupIndex + 1]
     if (rightGroupTab) {
-      const tempOrder = activeTab.order
-      activeTab.order = rightGroupTab.order
+      const tempOrder = targetTab.order
+      targetTab.order = rightGroupTab.order
       rightGroupTab.order = tempOrder
-      console.log(`Moved tab "${activeTab.title}" to the right within group (swapped orders: ${tempOrder} <-> ${rightGroupTab.order})`)
+      console.log(`Moved tab "${targetTab.title}" to the right within group (swapped orders: ${tempOrder} <-> ${rightGroupTab.order})`)
     }
     return
   }
@@ -1237,42 +1248,44 @@ const moveTabRight = () => {
     const maxGroupOrder = Math.max(...rightGroupTabs.map(t => t.order))
 
     // Move active tab to after the group ends
-    activeTab.order = maxGroupOrder
+    targetTab.order = maxGroupOrder
 
     // Shift all group tabs down by 1
     rightGroupTabs.forEach(tab => {
       tab.order = tab.order - 1
     })
 
-    console.log(`Moved ungrouped tab "${activeTab.title}" past group to the right`)
+    console.log(`Moved ungrouped tab "${targetTab.title}" past group to the right`)
   } else {
     // Simple swap with ungrouped tab
-    const tempOrder = activeTab.order
-    activeTab.order = rightTab.order
+    const tempOrder = targetTab.order
+    targetTab.order = rightTab.order
     rightTab.order = tempOrder
-    console.log(`Moved tab "${activeTab.title}" to the right`)
+    console.log(`Moved tab "${targetTab.title}" to the right`)
   }
 }
 
-const moveTabLeft = () => {
+const moveTabLeft = (tabId: string|null = null) => {
   // Case B: Group header is selected - move entire group
   if (selectedGroupId.value) {
     moveGroupLeft(selectedGroupId.value)
     return
   }
 
-  if (!activeTabId.value) return
+  const targetTabId = tabId ?? activeTabId.value;
 
-  const activeTab = tabs.value.get(activeTabId.value)
-  if (!activeTab) return
+  if (!targetTabId) return
+
+  const targetTab = tabs.value.get(targetTabId)
+  if (!targetTab) return
 
   const allTabs = sortedTabs.value
   const currentIndex = allTabs.findIndex(tab => tab.id === activeTabId.value)
   if (currentIndex === -1 || currentIndex <= 0) return
 
   // Case C: Grouped tab is active - move within group only
-  if (activeTab.groupId) {
-    const groupTabs = allTabs.filter(tab => tab.groupId === activeTab.groupId)
+  if (targetTab.groupId) {
+    const groupTabs = allTabs.filter(tab => tab.groupId === targetTab.groupId)
     const groupIndex = groupTabs.findIndex(tab => tab.id === activeTabId.value)
 
     console.log(`Moving tab within group: groupIndex=${groupIndex}, groupSize=${groupTabs.length}`)
@@ -1286,10 +1299,10 @@ const moveTabLeft = () => {
     // Move within group
     const leftGroupTab = groupTabs[groupIndex - 1]
     if (leftGroupTab) {
-      const tempOrder = activeTab.order
-      activeTab.order = leftGroupTab.order
+      const tempOrder = targetTab.order
+      targetTab.order = leftGroupTab.order
       leftGroupTab.order = tempOrder
-      console.log(`Moved tab "${activeTab.title}" to the left within group (swapped orders: ${tempOrder} <-> ${leftGroupTab.order})`)
+      console.log(`Moved tab "${targetTab.title}" to the left within group (swapped orders: ${tempOrder} <-> ${leftGroupTab.order})`)
     }
     return
   }
@@ -1304,20 +1317,20 @@ const moveTabLeft = () => {
     const minGroupOrder = Math.min(...leftGroupTabs.map(t => t.order))
 
     // Move active tab to before the group starts
-    activeTab.order = minGroupOrder
+    targetTab.order = minGroupOrder
 
     // Shift all group tabs up by 1
     leftGroupTabs.forEach(tab => {
       tab.order = tab.order + 1
     })
 
-    console.log(`Moved ungrouped tab "${activeTab.title}" past group to the left`)
+    console.log(`Moved ungrouped tab "${targetTab.title}" past group to the left`)
   } else {
     // Simple swap with ungrouped tab
-    const tempOrder = activeTab.order
-    activeTab.order = leftTab.order
+    const tempOrder = targetTab.order
+    targetTab.order = leftTab.order
     leftTab.order = tempOrder
-    console.log(`Moved tab "${activeTab.title}" to the left`)
+    console.log(`Moved tab "${targetTab.title}" to the left`)
   }
 }
 
