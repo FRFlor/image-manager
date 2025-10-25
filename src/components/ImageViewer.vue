@@ -1,7 +1,27 @@
 <template>
-  <div class="image-viewer">
-    <!-- Tab Navigation -->
-    <div class="tab-bar" :class="'layout-' + tabLayoutMode">
+  <div class="image-viewer" :class="'layout-' + tabLayoutMode">
+    <!-- Tree Panel (Left Sidebar) -->
+    <div class="tree-panel" v-if="tabLayoutMode === 'tree'">
+      <div class="tree-controls">
+        <button @click="toggleTabLayout" class="layout-toggle-btn" :title="`Current layout: ${tabLayoutMode}`">
+          ▤
+        </button>
+        <button @click="openNewImage" class="new-tab-btn" title="Open new image">
+          +
+        </button>
+      </div>
+      <div class="tree-items" ref="treeItemsContainer">
+        <div v-for="tab in sortedTabs" :key="tab.id" @click="switchToTab(tab.id)"
+          @contextmenu.prevent="showTabContextMenu($event, tab.id)" class="tree-item"
+          :class="{ active: tab.id === activeTabId }">
+          <img v-if="tab.imageData.assetUrl" :src="tab.imageData.assetUrl" :alt="tab.title" class="tree-item-thumbnail" />
+          <span class="tree-item-title">{{ tab.title }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Navigation (Top Bar) -->
+    <div class="tab-bar" :class="'layout-' + tabLayoutMode" v-if="tabLayoutMode !== 'tree'">
       <div class="tab-container" ref="tabContainer" v-show="tabLayoutMode !== 'invisible'">
         <div v-for="tab in sortedTabs" :key="tab.id" @click="switchToTab(tab.id)"
           @contextmenu.prevent="showTabContextMenu($event, tab.id)" class="tab"
@@ -18,7 +38,8 @@
           <span v-if="tabLayoutMode === 'invisible'">−</span>
           <span v-else-if="tabLayoutMode === 'default'">=</span>
           <span v-else-if="tabLayoutMode === 'expanded'">≡</span>
-          <span v-else>☰</span>
+          <span v-else-if="tabLayoutMode === 'large'">☰</span>
+          <span v-else>▤</span>
         </button>
         <button @click="openNewImage" class="new-tab-btn" title="Open new image">
           +
@@ -171,6 +192,7 @@ const activeTabId = ref<string | null>(null)
 const currentFolderImages = ref<ImageData[]>([])
 const imageContainer = ref<HTMLElement>()
 const tabContainer = ref<HTMLElement>()
+const treeItemsContainer = ref<HTMLElement>()
 
 // Lazy loading state
 const tabFolderContexts = ref<Map<string, FolderContext>>(new Map())
@@ -198,7 +220,7 @@ const dragStart = ref({ x: 0, y: 0 })
 const imageElement = ref<HTMLImageElement>()
 
 // Tab layout state
-const tabLayoutMode = ref<'invisible' | 'default' | 'expanded' | 'large'>('default')
+const tabLayoutMode = ref<'invisible' | 'default' | 'expanded' | 'large' | 'tree'>('default')
 
 
 
@@ -245,25 +267,46 @@ const isImageCorrupted = computed(() => {
 
 // Helper function to scroll the active tab into view (centered)
 const scrollActiveTabIntoView = () => {
-  if (!activeTabId.value || !tabContainer.value) return
+  if (!activeTabId.value) return
 
   // Use nextTick to ensure the DOM has updated with the active class
   nextTick(() => {
-    const activeTabElement = tabContainer.value?.querySelector('.tab.active') as HTMLElement
-    if (!activeTabElement || !tabContainer.value) return
+    // Handle tree mode (vertical scrolling)
+    if (tabLayoutMode.value === 'tree' && treeItemsContainer.value) {
+      const activeTreeItem = treeItemsContainer.value.querySelector('.tree-item.active') as HTMLElement
+      if (!activeTreeItem) return
 
-    const containerWidth = tabContainer.value.offsetWidth
-    const tabLeft = activeTabElement.offsetLeft
-    const tabWidth = activeTabElement.offsetWidth
+      const containerHeight = treeItemsContainer.value.offsetHeight
+      const itemTop = activeTreeItem.offsetTop
+      const itemHeight = activeTreeItem.offsetHeight
 
-    // Calculate scroll position to center the active tab
-    const scrollPosition = tabLeft - (containerWidth / 2) + (tabWidth / 2)
+      // Calculate scroll position to center the active item vertically
+      const scrollPosition = itemTop - (containerHeight / 2) + (itemHeight / 2)
 
-    // Smooth scroll to the calculated position
-    tabContainer.value.scrollTo({
-      left: scrollPosition,
-      behavior: 'smooth'
-    })
+      // Smooth scroll to the calculated position
+      treeItemsContainer.value.scrollTo({
+        top: scrollPosition,
+        behavior: 'smooth'
+      })
+    }
+    // Handle horizontal tab bar modes
+    else if (tabContainer.value) {
+      const activeTabElement = tabContainer.value.querySelector('.tab.active') as HTMLElement
+      if (!activeTabElement) return
+
+      const containerWidth = tabContainer.value.offsetWidth
+      const tabLeft = activeTabElement.offsetLeft
+      const tabWidth = activeTabElement.offsetWidth
+
+      // Calculate scroll position to center the active tab horizontally
+      const scrollPosition = tabLeft - (containerWidth / 2) + (tabWidth / 2)
+
+      // Smooth scroll to the calculated position
+      tabContainer.value.scrollTo({
+        left: scrollPosition,
+        behavior: 'smooth'
+      })
+    }
   })
 }
 
@@ -1163,7 +1206,7 @@ const resetImageView = () => {
 
 // Tab layout toggle
 const toggleTabLayout = () => {
-  const modes: Array<'invisible' | 'default' | 'expanded' | 'large'> = ['invisible', 'default', 'expanded', 'large']
+  const modes: Array<'invisible' | 'default' | 'expanded' | 'large' | 'tree'> = ['invisible', 'default', 'expanded', 'large', 'tree']
   const currentIndex = modes.indexOf(tabLayoutMode.value)
   const nextIndex = (currentIndex + 1) % modes.length
   tabLayoutMode.value = modes[nextIndex]
@@ -1541,6 +1584,77 @@ defineExpose({
   flex-direction: column;
   height: 100%;
   background: #1a1a1a;
+  color: white;
+}
+
+/* Tree layout - horizontal split */
+.image-viewer.layout-tree {
+  flex-direction: row;
+}
+
+/* Tree Panel (Left Sidebar) */
+.tree-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-width: 300px;
+  width: fit-content;
+  background: #2d2d2d;
+  border-right: 1px solid #404040;
+  flex-shrink: 0;
+}
+
+.tree-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid #404040;
+  background: #2d2d2d;
+}
+
+.tree-items {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid #363636;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.tree-item:hover {
+  background: #3d3d3d;
+}
+
+.tree-item.active {
+  background: #1a1a1a;
+  border-left: 3px solid #007bff;
+  padding-left: 9px; /* Compensate for border */
+}
+
+.tree-item-thumbnail {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.tree-item-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
   color: white;
 }
 
