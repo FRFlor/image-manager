@@ -1,7 +1,7 @@
 <template>
   <div class="image-viewer" :class="'layout-' + tabLayoutMode">
     <!-- Tree Panel (Left Sidebar) -->
-    <div class="tree-panel" v-if="tabLayoutMode === 'tree'" :class="{ collapsed: treeCollapsed }">
+    <div class="tree-panel" v-if="tabLayoutMode === 'tree-small' || tabLayoutMode === 'tree-large'" :class="{ collapsed: treeCollapsed }">
       <div class="tree-controls">
         <button @click="toggleTreeCollapse" class="tree-collapse-btn" :title="treeCollapsed ? 'Expand tree' : 'Collapse tree'">
           <span v-if="treeCollapsed">→</span>
@@ -25,7 +25,7 @@
     </div>
 
     <!-- Tab Navigation (Top Bar) -->
-    <div class="tab-bar" :class="'layout-' + tabLayoutMode" v-if="tabLayoutMode !== 'tree'">
+    <div class="tab-bar" :class="'layout-' + tabLayoutMode" v-if="tabLayoutMode === 'top-small' || tabLayoutMode === 'top-large' || tabLayoutMode === 'invisible'">
       <div class="tab-container" ref="tabContainer" v-show="tabLayoutMode !== 'invisible'">
         <div v-for="tab in sortedTabs" :key="tab.id" @click="switchToTab(tab.id)"
           @contextmenu.prevent="showTabContextMenu($event, tab.id)" class="tab"
@@ -40,10 +40,10 @@
       <div class="tab-controls">
         <button @click="toggleTabLayout" class="layout-toggle-btn" :title="`Current layout: ${tabLayoutMode}`">
           <span v-if="tabLayoutMode === 'invisible'">−</span>
-          <span v-else-if="tabLayoutMode === 'small'">=</span>
-          <span v-else-if="tabLayoutMode === 'expanded'">≡</span>
-          <span v-else-if="tabLayoutMode === 'large'">☰</span>
-          <span v-else>▤</span>
+          <span v-else-if="tabLayoutMode === 'top-small'">=</span>
+          <span v-else-if="tabLayoutMode === 'top-large'">☰</span>
+          <span v-else-if="tabLayoutMode === 'tree-small'">▤</span>
+          <span v-else>⊞</span>
         </button>
         <button @click="openNewImage" class="new-tab-btn" title="Open new image">
           +
@@ -224,7 +224,7 @@ const dragStart = ref({ x: 0, y: 0 })
 const imageElement = ref<HTMLImageElement>()
 
 // Tab layout state
-const tabLayoutMode = ref<'invisible' | 'small' | 'expanded' | 'large' | 'tree'>('tree')
+const tabLayoutMode = ref<'invisible' | 'top-small' | 'top-large' | 'tree-small' | 'tree-large'>('tree-small')
 const treeCollapsed = ref(false)
 
 
@@ -276,8 +276,8 @@ const scrollActiveTabIntoView = () => {
 
   // Use nextTick to ensure the DOM has updated with the active class
   nextTick(() => {
-    // Handle tree mode (vertical scrolling)
-    if (tabLayoutMode.value === 'tree' && treeItemsContainer.value) {
+    // Handle tree modes (vertical scrolling)
+    if ((tabLayoutMode.value === 'tree-small' || tabLayoutMode.value === 'tree-large') && treeItemsContainer.value) {
       const activeTreeItem = treeItemsContainer.value.querySelector('.tree-item.active') as HTMLElement
       if (!activeTreeItem) return
 
@@ -1211,7 +1211,7 @@ const resetImageView = () => {
 
 // Tab layout toggle
 const toggleTabLayout = () => {
-  const modes: Array<'invisible' | 'small' | 'expanded' | 'large' | 'tree'> = ['invisible', 'small', 'expanded', 'large', 'tree']
+  const modes: Array<'invisible' | 'top-small' | 'top-large' | 'tree-small' | 'tree-large'> = ['invisible', 'top-small', 'top-large', 'tree-small', 'tree-large']
   const currentIndex = modes.indexOf(tabLayoutMode.value)
   const nextIndex = (currentIndex + 1) % modes.length
   tabLayoutMode.value = modes[nextIndex]
@@ -1598,8 +1598,9 @@ defineExpose({
   color: white;
 }
 
-/* Tree layout - horizontal split */
-.image-viewer.layout-tree {
+/* Tree layouts - horizontal split */
+.image-viewer.layout-tree-small,
+.image-viewer.layout-tree-large {
   flex-direction: row;
 }
 
@@ -1703,6 +1704,22 @@ defineExpose({
   text-overflow: ellipsis;
   font-size: 14px;
   color: white;
+}
+
+/* Tree-Large specific styles (only when NOT collapsed) */
+.image-viewer.layout-tree-large .tree-panel:not(.collapsed) .tree-item {
+  padding: 12px;
+  gap: 12px;
+}
+
+.image-viewer.layout-tree-large .tree-panel:not(.collapsed) .tree-item-thumbnail {
+  width: 200px;
+  height: 200px;
+}
+
+.image-viewer.layout-tree-large .tree-panel:not(.collapsed) {
+  min-width: 250px;
+  max-width: 350px;
 }
 
 .tab-bar {
@@ -1830,38 +1847,12 @@ defineExpose({
   backdrop-filter: blur(10px);
 }
 
-/* Expanded layout - large previews */
-.tab-bar.layout-expanded {
-  min-height: 130px;
-}
-
-.tab-bar.layout-expanded .tab {
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-width: 140px;
-  max-width: 160px;
-  padding: 12px 8px;
-  gap: 8px;
-}
-
-.tab-bar.layout-expanded .tab-thumbnail {
-  width: 100px;
-  height: 100px;
-  margin: 0;
-}
-
-.tab-bar.layout-expanded .tab-title {
-  text-align: center;
-  font-size: 12px;
-}
-
-/* Large layout - extra large previews */
-.tab-bar.layout-large {
+/* Top-Large layout - large previews (200x200px) */
+.tab-bar.layout-top-large {
   min-height: 230px;
 }
 
-.tab-bar.layout-large .tab {
+.tab-bar.layout-top-large .tab {
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -1871,13 +1862,13 @@ defineExpose({
   gap: 8px;
 }
 
-.tab-bar.layout-large .tab-thumbnail {
+.tab-bar.layout-top-large .tab-thumbnail {
   width: 200px;
   height: 200px;
   margin: 0;
 }
 
-.tab-bar.layout-large .tab-title {
+.tab-bar.layout-top-large .tab-title {
   text-align: center;
   font-size: 12px;
 }
