@@ -1,7 +1,13 @@
 <template>
   <div class="group-grid-preview">
     <div class="grid-header">
-      <h3>{{ groupName }}</h3>
+      <input
+        type="text"
+        :value="groupName"
+        @input="handleNameChange"
+        class="group-name-input"
+        placeholder="Group name"
+        spellcheck="false" />
       <span class="image-count">{{ images.length }} {{ images.length === 1 ? 'image' : 'images' }}</span>
     </div>
     <div class="grid-container">
@@ -32,9 +38,15 @@ defineProps<{
 }>()
 
 // Emits
-defineEmits<{
+const emit = defineEmits<{
   imageSelected: [imageId: string]
+  nameChanged: [newName: string]
 }>()
+
+const handleNameChange = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  emit('nameChanged', input.value)
+}
 
 const handleImageError = (event: Event) => {
   const img = event.target as HTMLImageElement
@@ -60,11 +72,28 @@ const handleImageError = (event: Event) => {
   border-bottom: 1px solid #333;
 }
 
-.grid-header h3 {
+.group-name-input {
   margin: 0;
   font-size: 1.5rem;
   color: #fff;
   font-weight: 500;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.25rem 0.5rem;
+  outline: none;
+  transition: border-color 0.2s ease;
+  font-family: inherit;
+  min-width: 200px;
+  max-width: 500px;
+}
+
+.group-name-input:hover {
+  border-bottom-color: #444;
+}
+
+.group-name-input:focus {
+  border-bottom-color: #0ea5e9;
 }
 
 .image-count {

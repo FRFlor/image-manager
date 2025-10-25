@@ -187,7 +187,8 @@
       <GroupGridPreview
         :groupName="getGroupName(selectedGroupId)"
         :images="selectedGroupImages"
-        @imageSelected="handleGroupImageSelected" />
+        @imageSelected="handleGroupImageSelected"
+        @nameChanged="(newName) => renameGroup(selectedGroupId!, newName)" />
     </div>
 
     <!-- Empty State -->
