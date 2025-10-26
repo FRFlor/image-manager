@@ -109,6 +109,11 @@ export interface SessionData {
   }>
   activeTabId: string | null
   createdAt: string // Use string for JSON serialization
+  // UI state
+  layoutPosition?: 'invisible' | 'top' | 'tree'
+  layoutSize?: 'small' | 'large'
+  treeCollapsed?: boolean
+  controlsVisible?: boolean
 }
 
 /**

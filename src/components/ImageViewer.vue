@@ -136,6 +136,7 @@ const {
   sortedTabs,
   layoutPosition,
   layoutSize,
+  treeCollapsed,
   openTab,
   switchToTab: switchToTabBase,
   closeTab: closeTabBase,
@@ -1129,7 +1130,12 @@ const createSessionData = (): SessionData => {
     tabs: sessionTabs,
     groups: sessionGroups.length > 0 ? sessionGroups : undefined,
     activeTabId: activeTabId.value,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    // UI state
+    layoutPosition: layoutPosition.value,
+    layoutSize: layoutSize.value,
+    treeCollapsed: treeCollapsed.value,
+    controlsVisible: areZoomAndNavigationControlsVisible.value
   }
 }
 
@@ -1295,6 +1301,21 @@ const restoreFromSession = async (sessionData: SessionData) => {
     }
 
     console.log(`⚡ Session restored FAST with ${tabs.value.size} tabs (minimal loading, no preload)`)
+
+    // Restore UI state (layout and controls visibility)
+    if (sessionData.layoutPosition !== undefined) {
+      layoutPosition.value = sessionData.layoutPosition
+    }
+    if (sessionData.layoutSize !== undefined) {
+      layoutSize.value = sessionData.layoutSize
+    }
+    if (sessionData.treeCollapsed !== undefined) {
+      treeCollapsed.value = sessionData.treeCollapsed
+    }
+    if (sessionData.controlsVisible !== undefined) {
+      areZoomAndNavigationControlsVisible.value = sessionData.controlsVisible
+    }
+    console.log(`✅ Restored UI state: layout=${layoutPosition.value}/${layoutSize.value}, treeCollapsed=${treeCollapsed.value}, controlsVisible=${areZoomAndNavigationControlsVisible.value}`)
 
     // Scroll the active tab into view after restoration
     if (activeTabIdToLoad) {

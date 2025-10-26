@@ -70,6 +70,15 @@ pub struct SessionData {
     active_tab_id: Option<String>,
     #[serde(rename = "createdAt")]
     created_at: String,
+    // UI state
+    #[serde(rename = "layoutPosition", skip_serializing_if = "Option::is_none")]
+    layout_position: Option<String>,
+    #[serde(rename = "layoutSize", skip_serializing_if = "Option::is_none")]
+    layout_size: Option<String>,
+    #[serde(rename = "treeCollapsed", skip_serializing_if = "Option::is_none")]
+    tree_collapsed: Option<bool>,
+    #[serde(rename = "controlsVisible", skip_serializing_if = "Option::is_none")]
+    controls_visible: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
