@@ -894,13 +894,13 @@ fn update_full_menu(app: &tauri::AppHandle, recent_sessions: &[String], loaded_s
     let mut menu_builder = MenuBuilder::new(app);
     menu_builder = menu_builder.item(&file_menu);
 
+    menu_builder = menu_builder.item(&view_menu);
+
     // Add loaded session menu if a session is loaded
     if let Some(loaded_menu) = build_loaded_session_menu(app, loaded_session)
         .map_err(|e| format!("Failed to build loaded session menu: {}", e))? {
         menu_builder = menu_builder.item(&loaded_menu);
     }
-
-    menu_builder = menu_builder.item(&view_menu);
 
     let app_menu = menu_builder.build()
         .map_err(|e| format!("Failed to build menu: {}", e))?;
