@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import {computed, ref} from "vue"
 import type { FitMode, TabData } from "../types"
 
 // Zoom and pan state (per-tab, but managed globally)
@@ -171,6 +171,8 @@ export function useZoomControls() {
     tab.panOffset = panOffset.value
   }
 
+  const isZoomLocked = computed(() => fitMode.value !== 'actual-size')
+
   return {
     // State
     zoomLevel,
@@ -179,6 +181,7 @@ export function useZoomControls() {
     isDragging,
     dragStart,
 
+    isZoomLocked,
     // Methods
     zoomIn,
     zoomOut,

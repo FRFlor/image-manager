@@ -30,6 +30,7 @@ import type { FitMode } from "../types"
 const {
   zoomLevel,
   fitMode,
+  isZoomLocked,
   zoomIn,
   zoomOut,
   resetZoom,
@@ -58,7 +59,6 @@ const nextFitModeLabel = computed(() => {
   return `Next: ${fitModeLabelMap[resolvedMode]}`
 })
 
-const isZoomLocked = computed(() => fitMode.value !== 'actual-size')
 </script>
 
 <style scoped>
