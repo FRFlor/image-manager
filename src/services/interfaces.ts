@@ -36,23 +36,28 @@ export interface SessionService {
    * @returns The saved file path or null if cancelled
    */
   saveSessionDialog(sessionData: SessionData): Promise<string | null>
-  
+
   /**
    * Load session data using native file dialog
    * @returns The loaded session data or null if cancelled/failed
    */
   loadSessionDialog(): Promise<SessionData | null>
-  
+
   /**
    * Save session data automatically (for app close/restore)
    */
   saveAutoSession(sessionData: SessionData): Promise<void>
-  
+
   /**
    * Load automatically saved session data
    * @returns The loaded session data or null if none exists
    */
   loadAutoSession(): Promise<SessionData | null>
+
+  /**
+   * Refresh the recent sessions menu (updates menu bar dynamically)
+   */
+  refreshRecentSessionsMenu(): Promise<void>
 }
 
 /**

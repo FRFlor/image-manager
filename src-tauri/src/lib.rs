@@ -457,6 +457,12 @@ async fn save_session_dialog(app_handle: tauri::AppHandle, session_data: Session
             add_recent_session(&state.recent_sessions, &path_str)?;
             save_recent_sessions(&state.recent_sessions)?;
 
+            // Update the menu to reflect the new recent sessions list
+            let recent_sessions = state.recent_sessions.lock().unwrap().clone();
+            if let Err(e) = update_recent_sessions_menu(&app_handle, &recent_sessions) {
+                eprintln!("Warning: Failed to update menu: {}", e);
+            }
+
             Ok(Some(path_str))
         }
         Ok(None) => Ok(None), // User cancelled the dialog
@@ -668,7 +674,7 @@ async fn get_recent_sessions(state: State<'_, AppState>) -> Result<Vec<RecentSes
 }
 
 #[tauri::command]
-async fn load_session_from_path(path: String, state: State<'_, AppState>) -> Result<SessionData, String> {
+async fn load_session_from_path(app: tauri::AppHandle, path: String, state: State<'_, AppState>) -> Result<SessionData, String> {
     let path_obj = Path::new(&path);
 
     if !path_obj.exists() {
@@ -687,8 +693,22 @@ async fn load_session_from_path(path: String, state: State<'_, AppState>) -> Res
     add_recent_session(&state.recent_sessions, &path)?;
     save_recent_sessions(&state.recent_sessions)?;
 
+    // Update the menu to reflect the new recent sessions list
+    let recent_sessions = state.recent_sessions.lock().unwrap().clone();
+    if let Err(e) = update_recent_sessions_menu(&app, &recent_sessions) {
+        eprintln!("Warning: Failed to update menu: {}", e);
+    }
+
     println!("Session loaded from: {}", path);
     Ok(session_data)
+}
+
+#[tauri::command]
+async fn refresh_recent_sessions_menu(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let recent_sessions = state.recent_sessions.lock().unwrap().clone();
+    update_recent_sessions_menu(&app, &recent_sessions)?;
+    println!("Menu updated with {} recent sessions", recent_sessions.len());
+    Ok(())
 }
 
 #[tauri::command]
@@ -712,6 +732,71 @@ async fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(
     for (_, window) in app.webview_windows() {
         let _ = window.close();
     }
+
+    Ok(())
+}
+
+// Helper function to build the Recent Sessions submenu
+fn build_recent_sessions_submenu(app: &tauri::AppHandle, recent_sessions: &[String]) -> Result<tauri::menu::Submenu<tauri::Wry>, tauri::Error> {
+    use tauri::menu::SubmenuBuilder;
+
+    let mut recent_menu_builder = SubmenuBuilder::new(app, "Recent Saved Sessions");
+
+    // Add "Last Autosaved Session" at the top
+    recent_menu_builder = recent_menu_builder
+        .text("load_auto_session_menu", "Last Autosaved Session");
+
+    if !recent_sessions.is_empty() {
+        recent_menu_builder = recent_menu_builder.separator();
+
+        // Add up to 10 recent manual sessions
+        for (idx, session_path) in recent_sessions.iter().take(10).enumerate() {
+            let path_obj = Path::new(session_path);
+            let name = path_obj.file_stem()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Unknown")
+                .to_string();
+
+            // Use index-based ID so we can match it in the event handler
+            let menu_id = format!("load_recent_{}", idx);
+            recent_menu_builder = recent_menu_builder.text(&menu_id, name);
+        }
+    }
+
+    recent_menu_builder.build()
+}
+
+// Update the recent sessions submenu in the application menu
+fn update_recent_sessions_menu(app: &tauri::AppHandle, recent_sessions: &[String]) -> Result<(), String> {
+    use tauri::menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem};
+
+    // Build the new recent sessions submenu
+    let recent_menu = build_recent_sessions_submenu(app, recent_sessions)
+        .map_err(|e| format!("Failed to build recent sessions submenu: {}", e))?;
+
+    // Rebuild the entire menu with the updated submenu
+    let file_menu = SubmenuBuilder::new(app, "File")
+        .text("save_session", "Save Session")
+        .text("load_session", "Load Session")
+        .item(&recent_menu)
+        .separator()
+        .item(&PredefinedMenuItem::close_window(app, Some("Close Window"))
+            .map_err(|e| format!("Failed to create close window menu item: {}", e))?)
+        .build()
+        .map_err(|e| format!("Failed to build File menu: {}", e))?;
+
+    let view_menu = SubmenuBuilder::new(app, "View")
+        .text("toggle_controls", "Toggle Controls")
+        .build()
+        .map_err(|e| format!("Failed to build View menu: {}", e))?;
+
+    let app_menu = MenuBuilder::new(app)
+        .items(&[&file_menu, &view_menu])
+        .build()
+        .map_err(|e| format!("Failed to build menu: {}", e))?;
+
+    app.set_menu(app_menu)
+        .map_err(|e| format!("Failed to set menu: {}", e))?;
 
     Ok(())
 }
@@ -764,6 +849,7 @@ pub fn run() {
             load_auto_session,
             get_recent_sessions,
             load_session_from_path,
+            refresh_recent_sessions_menu,
             exit_app
         ])
         .setup(|app| {
@@ -772,31 +858,8 @@ pub fn run() {
             let app_state: State<AppState> = app.state();
             let recent_sessions = app_state.recent_sessions.lock().unwrap().clone();
 
-            // Build "Recent Saved Sessions" submenu
-            let mut recent_menu_builder = SubmenuBuilder::new(app, "Recent Saved Sessions");
-
-            // Add "Last Autosaved Session" at the top
-            recent_menu_builder = recent_menu_builder
-                .text("load_auto_session_menu", "Last Autosaved Session");
-
-            if !recent_sessions.is_empty() {
-                recent_menu_builder = recent_menu_builder.separator();
-
-                // Add up to 10 recent manual sessions
-                for (idx, session_path) in recent_sessions.iter().take(10).enumerate() {
-                    let path_obj = Path::new(session_path);
-                    let name = path_obj.file_stem()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("Unknown")
-                        .to_string();
-
-                    // Use index-based ID so we can match it in the event handler
-                    let menu_id = format!("load_recent_{}", idx);
-                    recent_menu_builder = recent_menu_builder.text(&menu_id, name);
-                }
-            }
-
-            let recent_menu = recent_menu_builder.build()?;
+            // Build "Recent Saved Sessions" submenu using helper function
+            let recent_menu = build_recent_sessions_submenu(&app.handle(), &recent_sessions)?;
 
             // "File" submenu with our custom items and the native Close Window
             let file_menu = SubmenuBuilder::new(app, "File")

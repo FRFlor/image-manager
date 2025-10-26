@@ -65,6 +65,19 @@ export class TauriSessionService implements SessionService {
       throw new Error(`Failed to load auto-session: ${error}`)
     }
   }
+
+  /**
+   * Refresh the recent sessions menu (updates menu bar dynamically)
+   */
+  async refreshRecentSessionsMenu(): Promise<void> {
+    try {
+      await invoke('refresh_recent_sessions_menu')
+      console.log('Recent sessions menu refreshed')
+    } catch (error) {
+      console.error('Failed to refresh recent sessions menu:', error)
+      throw new Error(`Failed to refresh recent sessions menu: ${error}`)
+    }
+  }
 }
 
 // Export a singleton instance
