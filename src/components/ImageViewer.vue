@@ -51,10 +51,10 @@
       </div>
 
       <!-- Zoom Controls -->
-      <ZoomControls v-if="activeImage && controlsVisible"/>
+      <ZoomControls v-if="activeImage && areZoomAndNavigationControlsVisible"/>
 
       <!-- Image Info Bar -->
-      <div class="info-bar">
+      <div class="info-bar" v-if="areZoomAndNavigationControlsVisible">
         <div class="image-info">
           <span class="image-name">{{ currentFileEntry?.name || activeImage?.name || 'Unknown' }}</span>
           <span class="image-details" v-if="!isImageCorrupted && activeImage">
@@ -118,6 +118,7 @@ import { memoryManager, ManagedResource } from '../utils/memoryManager'
 import { lazyImageLoader } from '../utils/lazyLoader'
 import { useTabControls } from '../composables/useTabControls'
 import { useZoomControls } from '../composables/useZoomControls'
+import {useUIConfigurations} from "../composables/useUIConfigurations.ts"
 
 // Props and Emits
 const emit = defineEmits<{
@@ -158,7 +159,6 @@ const {
   fitMode,
   panOffset,
   isDragging,
-  controlsVisible,
   zoomIn,
   zoomOut,
   resetZoom,
@@ -167,13 +167,14 @@ const {
   saveZoomAndPanStateIntoTab,
 
   toggleFitMode,
-  toggleControlsVisibility,
   handleWheel,
   handleMouseDown,
   handleMouseMove,
   handleMouseUp,
   resetImageView,
 } = useZoomControls()
+
+const { areZoomAndNavigationControlsVisible } = useUIConfigurations()
 
 // Reactive state
 const currentFolderImages = ref<ImageData[]>([])
@@ -1400,8 +1401,7 @@ defineExpose({
   saveSessionDialog,
   loadSessionDialog,
   createSessionData,
-  restoreFromSession,
-  toggleControls: toggleControlsVisibility
+  restoreFromSession
 })
 </script>
 

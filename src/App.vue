@@ -4,6 +4,9 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import ImageViewer from './components/ImageViewer.vue'
 import LoadingIndicator from './components/LoadingIndicator.vue'
 import type { ApplicationState, LoadingState, FolderContext, ImageData, FileEntry } from './types'
+import { useUIConfigurations } from './composables/useUIConfigurations'
+
+const { toggleControlsVisibility } = useUIConfigurations()
 
 // Application state
 const appState = ref<ApplicationState>({
@@ -90,7 +93,7 @@ onMounted(async () => {
       await listen('menu-toggle-controls', async () => {
         console.log('Menu toggle controls requested')
         try {
-          imageViewer.value?.toggleControls()
+          toggleControlsVisibility()
         } catch (error) {
           console.error('Failed to toggle controls from menu:', error)
         }
