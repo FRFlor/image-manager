@@ -9,7 +9,7 @@
 
     <!-- Image Display Area -->
     <div class="image-display" v-if="activeImage || isImageCorrupted">
-      <div class="image-container" ref="imageContainer" @wheel="handleWheel" @mousedown="handleMouseDown" :class="{
+      <div class="image-container" ref="imageContainer" @wheel="handleWheel" @mousedown="handleImageMouseDown" :class="{
         'dragging': isDragging,
         'pannable': fitMode !== 'fit-to-window'
       }">
@@ -112,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import type { ImageData, TabData, SessionData, FolderContext, FileEntry, TabGroup } from '../types'
 import GroupGridPreview from './GroupGridPreview.vue'
@@ -124,6 +124,7 @@ import { memoryManager, ManagedResource } from '../utils/memoryManager'
 import { lazyImageLoader } from '../utils/lazyLoader'
 import { useTabControls } from '../composables/useTabControls'
 import { useZoomControls } from '../composables/useZoomControls'
+import { useShortcutContext } from '../composables/useShortcutContext'
 import {useUIConfigurations} from "../composables/useUIConfigurations.ts"
 
 // Props and Emits
@@ -166,6 +167,7 @@ const {
   fitMode,
   panOffset,
   isDragging,
+  isZoomLocked,
   zoomIn,
   zoomOut,
   resetZoom,
@@ -175,13 +177,16 @@ const {
 
   toggleFitMode,
   handleWheel,
-  handleMouseDown,
+  handleMouseDown: handleZoomMouseDown,
   handleMouseMove,
   handleMouseUp,
+  panImageBy,
   resetImageView,
 } = useZoomControls()
 
 const { areZoomAndNavigationControlsVisible } = useUIConfigurations()
+const { shortcutContext, setShortcutContext, resetShortcutContext } = useShortcutContext()
+const KEYBOARD_PAN_STEP = 40
 
 // Reactive state
 const currentFolderImages = ref<ImageData[]>([])
@@ -256,6 +261,16 @@ const selectedGroupImages = computed((): ImageData[] => {
   groupTabs.sort((a, b) => a.order - b.order)
 
   return groupTabs.map(tab => tab.imageData)
+})
+
+watch(isZoomLocked, (locked) => {
+  if (locked) {
+    resetShortcutContext()
+  }
+})
+
+watch(activeTabId, () => {
+  resetShortcutContext()
 })
 
 const isImageCorrupted = computed(() => {
@@ -803,6 +818,26 @@ const formatFileSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
+const handleImageMouseDown = (event: MouseEvent) => {
+  if (!isZoomLocked.value) {
+    setShortcutContext('image-pan')
+  } else {
+    resetShortcutContext()
+  }
+
+  handleZoomMouseDown(event)
+}
+
+const handleDocumentMouseDown = (event: MouseEvent) => {
+  const target = event.target instanceof Node ? event.target : null
+
+  if (target && imageContainer.value?.contains(target)) {
+    return
+  }
+
+  resetShortcutContext()
+}
+
 // Tab reordering wrappers (use composable)
 const moveTabRight = (tabId: string|null = null) => {
   moveTabRightBase(tabId)
@@ -984,10 +1019,53 @@ const optimizeMemoryUsage = () => {
 // toggleGroupCollapse is provided by the composable
 
 
+const tryHandleKeyboardPan = (event: KeyboardEvent): boolean => {
+  if (shortcutContext.value !== 'image-pan') {
+    return false
+  }
+
+  if (isZoomLocked.value) {
+    resetShortcutContext()
+    return false
+  }
+
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    return false
+  }
+
+  let deltaX = 0
+  let deltaY = 0
+
+  switch (event.key) {
+    case 'ArrowUp':
+      deltaY = KEYBOARD_PAN_STEP
+      break
+    case 'ArrowDown':
+      deltaY = -KEYBOARD_PAN_STEP
+      break
+    case 'ArrowLeft':
+      deltaX = KEYBOARD_PAN_STEP
+      break
+    case 'ArrowRight':
+      deltaX = -KEYBOARD_PAN_STEP
+      break
+    default:
+      return false
+  }
+
+  event.preventDefault()
+  panImageBy(deltaX, deltaY)
+  return true
+}
+
 // Enhanced keyboard navigation using configuration
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
     return // Don't handle keyboard shortcuts when typing in inputs
+  }
+
+  if (tryHandleKeyboardPan(event)) {
+    return
   }
 
   // Find matching shortcut from configuration
@@ -1072,6 +1150,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
 // Lifecycle
 onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
+  document.addEventListener('mousedown', handleDocumentMouseDown)
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
 
@@ -1086,6 +1165,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown)
+  document.removeEventListener('mousedown', handleDocumentMouseDown)
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
 

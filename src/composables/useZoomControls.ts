@@ -153,6 +153,18 @@ export function useZoomControls() {
   }
 
   /**
+   * Nudge the image by a delta (keyboard panning)
+   */
+  const panImageBy = (deltaX: number, deltaY: number) => {
+    if (fitMode.value !== 'actual-size') return
+
+    panOffset.value = {
+      x: panOffset.value.x + deltaX,
+      y: panOffset.value.y + deltaY
+    }
+  }
+
+  /**
    * Reset zoom and pan to default state (fit-to-window)
    */
   const resetImageView = () => {
@@ -195,6 +207,7 @@ export function useZoomControls() {
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,
+    panImageBy,
     resetImageView,
   }
 }
