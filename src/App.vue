@@ -85,7 +85,17 @@ onMounted(async () => {
           console.error('Failed to handle menu load session:', error)
         }
       })
-      
+
+      // Listen for menu toggle controls event
+      await listen('menu-toggle-controls', async () => {
+        console.log('Menu toggle controls requested')
+        try {
+          imageViewer.value?.toggleControls()
+        } catch (error) {
+          console.error('Failed to toggle controls from menu:', error)
+        }
+      })
+
       console.log('Event listeners set up successfully')
     } catch (error) {
       console.error('Failed to set up event listeners:', error)

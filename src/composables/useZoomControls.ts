@@ -8,6 +8,9 @@ const panOffset = ref({ x: 0, y: 0 })
 const isDragging = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
 
+// Controls visibility state (global)
+const controlsVisible = ref(true)
+
 /**
  * Composable for managing zoom and pan controls for images.
  *
@@ -145,6 +148,14 @@ export function useZoomControls() {
     tab.panOffset = panOffset.value
   }
 
+  /**
+   * Toggle controls visibility
+   */
+  const toggleControlsVisibility = () => {
+    controlsVisible.value = !controlsVisible.value
+    console.log(`Controls visibility: ${controlsVisible.value ? 'visible' : 'hidden'}`)
+  }
+
   return {
     // State
     zoomLevel,
@@ -152,6 +163,7 @@ export function useZoomControls() {
     panOffset,
     isDragging,
     dragStart,
+    controlsVisible,
 
     // Methods
     zoomIn,
@@ -162,6 +174,7 @@ export function useZoomControls() {
     saveZoomAndPanStateIntoTab,
 
     toggleFitMode,
+    toggleControlsVisibility,
     handleWheel,
     handleMouseDown,
     handleMouseMove,

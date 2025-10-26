@@ -626,8 +626,13 @@ pub fn run() {
                 .item(&PredefinedMenuItem::close_window(app, Some("Close Window"))?)
                 .build()?;
 
+            // "View" submenu with Toggle Controls option
+            let view_menu = SubmenuBuilder::new(app, "View")
+                .text("toggle_controls", "Toggle Controls")
+                .build()?;
+
             let app_menu = MenuBuilder::new(app)
-                .items(&[&file_menu]) // add more submenus here if you like
+                .items(&[&file_menu, &view_menu]) // add more submenus here if you like
                 .build()?;
 
             app.set_menu(app_menu)?;
@@ -642,6 +647,9 @@ pub fn run() {
                     }
                     "load_session" => {
                         let _ = app_handle.emit("menu-load-session", ());
+                    }
+                    "toggle_controls" => {
+                        let _ = app_handle.emit("menu-toggle-controls", ());
                     }
                     _ => {}
                 }

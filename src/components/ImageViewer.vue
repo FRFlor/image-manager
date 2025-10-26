@@ -51,7 +51,7 @@
       </div>
 
       <!-- Zoom Controls -->
-      <ZoomControls v-if="activeImage"/>
+      <ZoomControls v-if="activeImage && controlsVisible"/>
 
       <!-- Image Info Bar -->
       <div class="info-bar">
@@ -158,6 +158,7 @@ const {
   fitMode,
   panOffset,
   isDragging,
+  controlsVisible,
   zoomIn,
   zoomOut,
   resetZoom,
@@ -166,6 +167,7 @@ const {
   saveZoomAndPanStateIntoTab,
 
   toggleFitMode,
+  toggleControlsVisibility,
   handleWheel,
   handleMouseDown,
   handleMouseMove,
@@ -1398,7 +1400,8 @@ defineExpose({
   saveSessionDialog,
   loadSessionDialog,
   createSessionData,
-  restoreFromSession
+  restoreFromSession,
+  toggleControls: toggleControlsVisibility
 })
 </script>
 
