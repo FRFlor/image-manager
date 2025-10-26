@@ -183,7 +183,7 @@ impl MetadataCache {
         let conn = self.conn.lock().unwrap();
 
         // Execute a checkpoint to flush WAL (Write-Ahead Logging) to the main database file
-        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)", [])
+        conn.pragma_update(None, "wal_checkpoint", "TRUNCATE")
             .map_err(|e| format!("Failed to checkpoint WAL: {}", e))?;
 
         println!("Cache flushed to disk");
