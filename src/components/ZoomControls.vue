@@ -38,7 +38,7 @@ const {
 <style scoped>
 /* Zoom Controls */
 .zoom-controls {
-  position: absolute;
+  position: fixed;
   top: 20px;
   right: 20px;
   background: rgba(45, 45, 45, 0.9);
@@ -49,7 +49,7 @@ const {
   align-items: center;
   gap: 12px;
   backdrop-filter: blur(10px);
-  z-index: 10;
+  z-index: 1000;
 }
 
 .zoom-info {
