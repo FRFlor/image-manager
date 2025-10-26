@@ -136,6 +136,7 @@ import { sessionService } from '../services/sessionService'
 import { memoryManager, ManagedResource } from '../utils/memoryManager'
 import { lazyImageLoader } from '../utils/lazyLoader'
 import { useTabControls } from '../composables/useTabControls'
+import { useZoomControls } from '../composables/useZoomControls'
 
 // Props and Emits
 const emit = defineEmits<{
@@ -171,6 +172,26 @@ const {
   setNextGroupColorIndex
 } = useTabControls()
 
+const {
+  zoomLevel,
+  fitMode,
+  panOffset,
+  isDragging,
+  zoomIn,
+  zoomOut,
+  resetZoom,
+
+  loadZoomAndPanStateFromTab,
+  saveZoomAndPanStateIntoTab,
+
+  toggleFitMode,
+  handleWheel,
+  handleMouseDown,
+  handleMouseMove,
+  handleMouseUp,
+  resetImageView,
+} = useZoomControls()
+
 // Reactive state
 const currentFolderImages = ref<ImageData[]>([])
 const imageContainer = ref<HTMLElement>()
@@ -192,12 +213,6 @@ const navigationSequenceId = ref(0)
 const lastKeyPressTime = ref(0)
 const KEY_REPEAT_THRESHOLD = 50 // ms - minimum time between key presses to prevent excessive queuing
 
-// Zoom and pan state
-const zoomLevel = ref(1)
-const fitMode = ref<'fit-to-window' | 'actual-size'>('fit-to-window')
-const panOffset = ref({ x: 0, y: 0 })
-const isDragging = ref(false)
-const dragStart = ref({ x: 0, y: 0 })
 const imageElement = ref<HTMLImageElement>()
 
 // Computed properties
@@ -365,9 +380,7 @@ const switchToTab = async (tabId: string) => {
   const saveCurrentTabState = (currentTabId: string) => {
     const currentTab = tabs.value.get(currentTabId)
     if (currentTab) {
-      currentTab.zoomLevel = zoomLevel.value
-      currentTab.fitMode = fitMode.value
-      currentTab.panOffset = { ...panOffset.value }
+      saveZoomAndPanStateIntoTab(currentTab);
     }
   }
 
@@ -379,9 +392,7 @@ const switchToTab = async (tabId: string) => {
   scrollActiveTabIntoView()
 
   // Restore zoom and pan state for the new tab
-  zoomLevel.value = tab.zoomLevel ?? 1
-  fitMode.value = tab.fitMode ?? 'fit-to-window'
-  panOffset.value = tab.panOffset ?? { x: 0, y: 0 }
+  loadZoomAndPanStateFromTab(tab);
 
   // Load folder context for this tab if needed (lazy loading)
   if (!tab.isFullyLoaded) {
@@ -678,9 +689,7 @@ const updateCurrentTabImage = async (newImageData: ImageData | null, fileEntry: 
   if (!activeTab) return
 
   // Save current zoom/pan state before changing images
-  activeTab.zoomLevel = zoomLevel.value
-  activeTab.fitMode = fitMode.value
-  activeTab.panOffset = { ...panOffset.value }
+  saveZoomAndPanStateIntoTab(activeTab)
 
   // Update current file entry (works for both valid and corrupted images)
   currentFileEntry.value = fileEntry
@@ -979,98 +988,7 @@ const optimizeMemoryUsage = () => {
   }
 }
 
-// Zoom and pan functionality
-const zoomIn = () => {
-  if (fitMode.value === 'fit-to-window') {
-    fitMode.value = 'actual-size'
-    zoomLevel.value = 1.2 // Start with a slight zoom to make panning useful
-  } else {
-    zoomLevel.value = Math.min(zoomLevel.value * 1.2, 5) // Max zoom 5x
-  }
-  console.log(`Zoomed in to ${(zoomLevel.value * 100).toFixed(0)}%`)
-}
-
-const zoomOut = () => {
-  if (fitMode.value === 'fit-to-window') {
-    return // Can't zoom out in fit mode
-  }
-
-  zoomLevel.value = Math.max(zoomLevel.value / 1.2, 0.1) // Min zoom 10%
-
-  // If zoomed out enough, switch back to fit mode
-  if (zoomLevel.value <= 0.5) {
-    fitMode.value = 'fit-to-window'
-    zoomLevel.value = 1
-    panOffset.value = { x: 0, y: 0 }
-  }
-
-  console.log(`Zoomed out to ${(zoomLevel.value * 100).toFixed(0)}%`)
-}
-
-const resetZoom = () => {
-  fitMode.value = 'fit-to-window'
-  zoomLevel.value = 1
-  panOffset.value = { x: 0, y: 0 }
-  console.log('Reset zoom to fit window')
-}
-
-const toggleFitMode = () => {
-  if (fitMode.value === 'fit-to-window') {
-    fitMode.value = 'actual-size'
-    zoomLevel.value = 1.2 // Start with a slight zoom to make panning useful
-    panOffset.value = { x: 0, y: 0 }
-    console.log('Switched to actual size mode')
-  } else {
-    fitMode.value = 'fit-to-window'
-    zoomLevel.value = 1
-    panOffset.value = { x: 0, y: 0 }
-    console.log('Switched to fit window mode')
-  }
-}
-
-const handleWheel = (event: WheelEvent) => {
-  if (!activeImage.value) return
-
-  event.preventDefault()
-
-  if (event.deltaY < 0) {
-    zoomIn()
-  } else {
-    zoomOut()
-  }
-}
-
-const handleMouseDown = (event: MouseEvent) => {
-  if (fitMode.value === 'fit-to-window') return
-
-  isDragging.value = true
-  dragStart.value = {
-    x: event.clientX - panOffset.value.x,
-    y: event.clientY - panOffset.value.y
-  }
-
-  event.preventDefault()
-}
-
-const handleMouseMove = (event: MouseEvent) => {
-  if (!isDragging.value) return
-
-  panOffset.value = {
-    x: event.clientX - dragStart.value.x,
-    y: event.clientY - dragStart.value.y
-  }
-}
-
-const handleMouseUp = () => {
-  isDragging.value = false
-}
-
-// Reset zoom and pan when switching images
-const resetImageView = () => {
-  fitMode.value = 'fit-to-window'
-  zoomLevel.value = 1
-  panOffset.value = { x: 0, y: 0 }
-}
+// Zoom and pan methods are now provided by useZoomControls composable
 
 // toggleGroupCollapse is provided by the composable
 
@@ -1195,9 +1113,7 @@ const createSessionData = (): SessionData => {
   if (activeTabId.value) {
     const currentTab = tabs.value.get(activeTabId.value)
     if (currentTab) {
-      currentTab.zoomLevel = zoomLevel.value
-      currentTab.fitMode = fitMode.value
-      currentTab.panOffset = { ...panOffset.value }
+      saveZoomAndPanStateIntoTab(currentTab)
     }
   }
 
@@ -1334,9 +1250,7 @@ const restoreFromSession = async (sessionData: SessionData) => {
         activeTab.isActive = true
 
         // Restore zoom/pan state for the active tab
-        zoomLevel.value = activeTab.zoomLevel ?? 1
-        fitMode.value = activeTab.fitMode ?? 'fit-to-window'
-        panOffset.value = activeTab.panOffset ?? { x: 0, y: 0 }
+        loadZoomAndPanStateFromTab(activeTab);
 
         // CRITICAL: Only load folder context WITHOUT preloading adjacent images
         // This makes session restore much faster on network drives
@@ -1390,9 +1304,7 @@ const restoreFromSession = async (sessionData: SessionData) => {
         activeTabIdToLoad = firstTab.id
 
         // Restore zoom/pan state for the first tab
-        zoomLevel.value = firstTab.zoomLevel ?? 1
-        fitMode.value = firstTab.fitMode ?? 'fit-to-window'
-        panOffset.value = firstTab.panOffset ?? { x: 0, y: 0 }
+        loadZoomAndPanStateFromTab(firstTab);
 
         console.log(`✅ First tab activated (deferred loading): ${firstTab.title}`)
       }
