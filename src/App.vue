@@ -116,7 +116,7 @@ onMounted(async () => {
           const sessionPath = event.payload
           const sessionData = await invoke<any>('load_session_from_path', { path: sessionPath })
           if (sessionData && imageViewer.value) {
-            await imageViewer.value.restoreSession(sessionData)
+            await imageViewer.value.restoreFromSession(sessionData)
           }
         } catch (error) {
           console.error('Failed to load recent session from menu:', error)
