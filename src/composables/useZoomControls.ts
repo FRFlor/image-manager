@@ -23,12 +23,24 @@ export function useZoomControls() {
    * Zoom in by 20% (max 5x zoom)
    */
   const zoomIn = () => {
-    zoomLevel.value = Math.min(zoomLevel.value * 1.2, 5) // Max zoom 5x
+    if (fitMode.value !== 'actual-size') {
+      setFitMode('actual-size')
+      zoomLevel.value = 1.2 // Start with a slight zoom to make zooming visible
+      return
+    }
+
+    zoomLevel.value = Math.min(zoomLevel.value * 1.1, 5) // Max zoom 5x
     console.log(`Zoomed in to ${(zoomLevel.value * 100).toFixed(0)}%`)
   }
 
   const zoomOut = () => {
-    zoomLevel.value = Math.max(zoomLevel.value / 1.2, 0.1) // Min zoom 10%
+    if (fitMode.value !== 'actual-size') {
+      setFitMode('actual-size')
+      zoomLevel.value = 0.8 // Start with a slight zoom to make zooming visible
+      return // Can't zoom out in fit modes
+    }
+
+    zoomLevel.value = Math.max(zoomLevel.value / 1.1, 0.1) // Min zoom 10%
     console.log(`Zoomed out to ${(zoomLevel.value * 100).toFixed(0)}%`)
   }
 
