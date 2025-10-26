@@ -186,7 +186,6 @@ const {
   contextMenuCreateGroupWithNext,
   contextMenuRenameGroup: contextMenuRenameGroupBase,
   contextMenuRemoveFromGroup: contextMenuRemoveFromGroupBase,
-  contextMenuDissolveGroup: contextMenuDissolveGroupBase,
   renameGroup,
   removeTabFromGroup,
   dissolveGroup,
@@ -263,19 +262,6 @@ const handleContextMenuRemoveFromGroup = () => {
   if (!tabIdToRemove) return
 
   removeTabFromGroup(tabIdToRemove)
-  contextMenuVisible.value = false
-}
-
-const handleContextMenuDissolveGroup = () => {
-  const groupInfo = contextMenuDissolveGroupBase()
-  if (!groupInfo) return
-
-  const confirmDissolve = window.confirm(`Dissolve group "${groupInfo.groupName}"? All ${groupInfo.tabCount} tabs will be ungrouped.`)
-  if (confirmDissolve) {
-    dissolveGroup(groupInfo.groupId)
-    console.log(`✅ Dissolved group "${groupInfo.groupName}"`)
-  }
-
   contextMenuVisible.value = false
 }
 

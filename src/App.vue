@@ -5,8 +5,10 @@ import ImageViewer from './components/ImageViewer.vue'
 import LoadingIndicator from './components/LoadingIndicator.vue'
 import type { ApplicationState, LoadingState, FolderContext, ImageData, FileEntry } from './types'
 import { useUIConfigurations } from './composables/useUIConfigurations'
+import { useSessionManager } from './composables/useSessionManager'
 
 const { toggleControlsVisibility } = useUIConfigurations()
+const { saveSession, loadSession } = useSessionManager()
 
 // Application state
 const appState = ref<ApplicationState>({
@@ -42,7 +44,7 @@ onMounted(async () => {
 
         try {
           // Save session before closing
-          await imageViewer.value?.saveAutoSession()
+          await saveSession('auto')
           console.log('Session saved successfully, exiting app...')
 
           // Call exit_app command to close the application
@@ -134,21 +136,9 @@ onMounted(async () => {
         console.log('Menu load recent session requested:', event.payload)
         try {
           const sessionPath = event.payload
-          const sessionData = await invoke<any>('load_session_from_path', { path: sessionPath })
-          if (sessionData && imageViewer.value) {
-            await imageViewer.value.restoreFromSession(sessionData)
-
-            // Extract session name from path
-            const pathParts = sessionPath.split(/[\\/]/)
-            const fileName = pathParts[pathParts.length - 1] || 'unknown'
-            const sessionName = fileName.replace('.session.json', '')
-
-            // Update session tracking in the component (these are refs)
-            imageViewer.value.currentSessionPath = sessionPath
-            imageViewer.value.currentSessionName = sessionName
-
-            // Tell backend to update the menu with the loaded session
-            await invoke('set_loaded_session', { name: sessionName, path: sessionPath })
+          const result = await loadSession('path', sessionPath)
+          if (result && imageViewer.value) {
+            await imageViewer.value.restoreFromSession(result.sessionData)
           }
         } catch (error) {
           console.error('Failed to load recent session from menu:', error)
@@ -215,7 +205,7 @@ const waitForComponent = async () => {
 onUnmounted(async () => {
   // Also save session when component unmounts as a fallback
   try {
-    await imageViewer.value?.saveAutoSession()
+    await saveSession('auto')
   } catch (error) {
     console.error('Failed to save session on unmount:', error)
   }

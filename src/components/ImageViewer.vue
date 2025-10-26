@@ -118,13 +118,13 @@ import type { ImageData, TabData, SessionData, FolderContext, FileEntry, TabGrou
 import GroupGridPreview from './GroupGridPreview.vue'
 import TabBar from './TabBar.vue'
 import ZoomControls from './ZoomControls.vue'
-import { sessionService } from '../services/sessionService'
 import { memoryManager, ManagedResource } from '../utils/memoryManager'
 import { lazyImageLoader } from '../utils/lazyLoader'
 import { useTabControls } from '../composables/useTabControls'
 import { useZoomControls } from '../composables/useZoomControls'
 import { useShortcutContext, type KeyboardActions } from '../composables/useShortcutContext'
-import {useUIConfigurations} from "../composables/useUIConfigurations.ts"
+import { useUIConfigurations } from "../composables/useUIConfigurations.ts"
+import { useSessionManager } from '../composables/useSessionManager'
 
 // Props and Emits
 const emit = defineEmits<{
@@ -184,6 +184,15 @@ const {
 } = useZoomControls()
 
 const { areZoomAndNavigationControlsVisible } = useUIConfigurations()
+
+const {
+  currentSessionPath,
+  currentSessionName,
+  saveSession,
+  loadSession,
+  reloadCurrentSession,
+  updateCurrentSession
+} = useSessionManager()
 
 // Reactive state
 const currentFolderImages = ref<ImageData[]>([])
@@ -1088,55 +1097,7 @@ onUnmounted(() => {
   tabFolderContexts.value.clear()
 })
 
-// Session management methods
-const createSessionData = (): SessionData => {
-  // Save current tab's zoom/pan state before creating session
-  if (activeTabId.value) {
-    const currentTab = tabs.value.get(activeTabId.value)
-    if (currentTab) {
-      saveZoomAndPanStateIntoTab(currentTab)
-    }
-  }
-
-  const tabArray = sortedTabs.value
-  const sessionTabs = tabArray.map(tab => ({
-    id: tab.id,
-    imagePath: tab.imageData.path,
-    order: tab.order,
-    groupId: tab.groupId,
-    zoomLevel: tab.zoomLevel,
-    fitMode: tab.fitMode,
-    panOffset: tab.panOffset
-  }))
-
-  // Save groups
-  const groupsArray = Array.from(tabGroups.value.values())
-  const sessionGroups = groupsArray.map(group => ({
-    id: group.id,
-    name: group.name,
-    color: group.color,
-    order: group.order,
-    tabIds: [...group.tabIds],
-    collapsed: group.collapsed
-  }))
-
-  console.log(`💾 Saving ${sessionGroups.length} groups to session:`, sessionGroups)
-
-  return {
-    tabs: sessionTabs,
-    groups: sessionGroups.length > 0 ? sessionGroups : undefined,
-    activeTabId: activeTabId.value,
-    createdAt: new Date().toISOString(),
-    // UI state
-    layoutPosition: layoutPosition.value,
-    layoutSize: layoutSize.value,
-    treeCollapsed: treeCollapsed.value,
-    controlsVisible: areZoomAndNavigationControlsVisible.value,
-    // Loaded session tracking (for persistence across app restarts)
-    loadedSessionName: currentSessionName.value || undefined,
-    loadedSessionPath: currentSessionPath.value || undefined
-  }
-}
+// Session management methods (now using useSessionManager composable)
 
 const restoreFromSession = async (sessionData: SessionData) => {
   try {
@@ -1339,159 +1300,30 @@ const restoreFromSession = async (sessionData: SessionData) => {
 }
 
 const saveAutoSession = async () => {
-  console.log('saveAutoSession called, tabs count:', tabs.value.size)
-
-  try {
-    const sessionData = createSessionData()
-    console.log('Created session data:', sessionData)
-    await sessionService.saveAutoSession(sessionData)
-    console.log('Auto-session saved successfully')
-  } catch (error) {
-    console.error('Failed to save auto-session:', error)
-    // Don't throw here as this shouldn't block the application
-  }
+  await saveSession('auto')
 }
 
 const loadAutoSession = async () => {
-  console.log('loadAutoSession called')
-  try {
-    const sessionData = await sessionService.loadAutoSession()
-    console.log('Loaded session data:', sessionData)
-    if (sessionData) {
-      await restoreFromSession(sessionData)
-
-      // Restore loaded session tracking if present
-      if (sessionData.loadedSessionName && sessionData.loadedSessionPath) {
-        console.log('Restoring loaded session:', sessionData.loadedSessionName)
-        currentSessionName.value = sessionData.loadedSessionName
-        currentSessionPath.value = sessionData.loadedSessionPath
-
-        // Update backend menu to show the loaded session
-        await invoke('set_loaded_session', {
-          name: sessionData.loadedSessionName,
-          path: sessionData.loadedSessionPath
-        })
-      }
-
-      console.log('Session restored successfully')
-      return true
-    }
-    console.log('No session data found')
-    return false
-  } catch (error) {
-    console.error('Failed to load auto-session:', error)
-    return false
+  const result = await loadSession('auto')
+  if (result) {
+    await restoreFromSession(result.sessionData)
+    return true
   }
+  return false
 }
 
 const saveSessionDialog = async () => {
-  console.log('saveSessionDialog called')
-
-  if (tabs.value.size === 0) {
-    console.log('No tabs to save')
-    return false
-  }
-
-  try {
-    const sessionData = createSessionData()
-    console.log('Created session data for dialog save:', sessionData)
-    const savedPath = await sessionService.saveSessionDialog(sessionData)
-    if (savedPath) {
-      console.log('Session saved to:', savedPath)
-
-      // Update session tracking for reload/update functionality
-      // Extract session name from path
-      const pathParts = savedPath.split(/[\\/]/)
-      const fileName = pathParts[pathParts.length - 1] || 'unknown'
-      const sessionName = fileName.replace('.session.json', '')
-
-      currentSessionPath.value = savedPath
-      currentSessionName.value = sessionName
-      console.log(`Session tracking updated: ${sessionName} at ${savedPath}`)
-
-      return true
-    } else {
-      console.log('Session save cancelled by user')
-      return false
-    }
-  } catch (error) {
-    console.error('Failed to save session via dialog:', error)
-    return false
-  }
+  const result = await saveSession('dialog')
+  return typeof result === 'string' || result === true
 }
 
 const loadSessionDialog = async () => {
-  console.log('loadSessionDialog called')
-  try {
-    const result = await sessionService.loadSessionDialog()
-    console.log('Loaded session result from dialog:', result)
-    if (result) {
-      await restoreFromSession(result.sessionData)
-
-      // Update session tracking for reload/update functionality
-      currentSessionPath.value = result.path
-      currentSessionName.value = result.name
-      console.log(`Session tracking updated: ${result.name} at ${result.path}`)
-
-      console.log('Session restored successfully from dialog')
-      return true
-    }
-    console.log('No session data loaded (user cancelled)')
-    return false
-  } catch (error) {
-    console.error('Failed to load session via dialog:', error)
-    return false
-  }
-}
-
-// State to track current session for reload/update
-const currentSessionPath = ref<string | null>(null)
-const currentSessionName = ref<string | null>(null)
-
-const reloadCurrentSession = async () => {
-  console.log('reloadCurrentSession called')
-  if (!currentSessionPath.value) {
-    console.log('No current session to reload')
-    return false
-  }
-
-  try {
-    const sessionData = await invoke<any>('load_session_from_path', { path: currentSessionPath.value })
-    if (sessionData) {
-      await restoreFromSession(sessionData)
-      console.log('Session reloaded successfully')
-      return true
-    }
-    return false
-  } catch (error) {
-    console.error('Failed to reload session:', error)
-    return false
-  }
-}
-
-const updateCurrentSession = async () => {
-  console.log('updateCurrentSession called')
-  if (!currentSessionPath.value || !currentSessionName.value) {
-    console.log('No current session to update')
-    return false
-  }
-
-  try {
-    const sessionData = createSessionData()
-    sessionData.name = currentSessionName.value
-
-    // Use backend command to write the session file
-    await invoke('update_session_file', {
-      path: currentSessionPath.value,
-      sessionData: sessionData
-    })
-
-    console.log('Session updated successfully at:', currentSessionPath.value)
+  const result = await loadSession('dialog')
+  if (result) {
+    await restoreFromSession(result.sessionData)
     return true
-  } catch (error) {
-    console.error('Failed to update session:', error)
-    return false
   }
+  return false
 }
 
 // Expose methods and refs for parent component
@@ -1501,7 +1333,6 @@ defineExpose({
   loadAutoSession,
   saveSessionDialog,
   loadSessionDialog,
-  createSessionData,
   restoreFromSession,
   reloadCurrentSession,
   updateCurrentSession,
