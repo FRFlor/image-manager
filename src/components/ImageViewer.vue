@@ -1120,7 +1120,10 @@ const createSessionData = (): SessionData => {
     layoutPosition: layoutPosition.value,
     layoutSize: layoutSize.value,
     treeCollapsed: treeCollapsed.value,
-    controlsVisible: areZoomAndNavigationControlsVisible.value
+    controlsVisible: areZoomAndNavigationControlsVisible.value,
+    // Loaded session tracking (for persistence across app restarts)
+    loadedSessionName: currentSessionName.value || undefined,
+    loadedSessionPath: currentSessionPath.value || undefined
   }
 }
 
@@ -1345,6 +1348,20 @@ const loadAutoSession = async () => {
     console.log('Loaded session data:', sessionData)
     if (sessionData) {
       await restoreFromSession(sessionData)
+
+      // Restore loaded session tracking if present
+      if (sessionData.loadedSessionName && sessionData.loadedSessionPath) {
+        console.log('Restoring loaded session:', sessionData.loadedSessionName)
+        currentSessionName.value = sessionData.loadedSessionName
+        currentSessionPath.value = sessionData.loadedSessionPath
+
+        // Update backend menu to show the loaded session
+        await invoke('set_loaded_session', {
+          name: sessionData.loadedSessionName,
+          path: sessionData.loadedSessionPath
+        })
+      }
+
       console.log('Session restored successfully')
       return true
     }

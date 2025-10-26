@@ -88,6 +88,11 @@ pub struct SessionData {
     tree_collapsed: Option<bool>,
     #[serde(rename = "controlsVisible", skip_serializing_if = "Option::is_none")]
     controls_visible: Option<bool>,
+    // Loaded session tracking (only saved in auto-session)
+    #[serde(rename = "loadedSessionName", skip_serializing_if = "Option::is_none")]
+    loaded_session_name: Option<String>,
+    #[serde(rename = "loadedSessionPath", skip_serializing_if = "Option::is_none")]
+    loaded_session_path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -116,6 +116,9 @@ export interface SessionData {
   layoutSize?: 'small' | 'large'
   treeCollapsed?: boolean
   controlsVisible?: boolean
+  // Loaded session tracking (only in auto-session)
+  loadedSessionName?: string
+  loadedSessionPath?: string
 }
 
 /**
