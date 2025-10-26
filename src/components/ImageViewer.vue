@@ -263,14 +263,20 @@ const selectedGroupImages = computed((): ImageData[] => {
   return groupTabs.map(tab => tab.imageData)
 })
 
+watch(activeTabId, () => {
+  resetShortcutContext()
+})
+
 watch(isZoomLocked, (locked) => {
   if (locked) {
     resetShortcutContext()
   }
 })
 
-watch(activeTabId, () => {
-  resetShortcutContext()
+watch(fitMode, (mode) => {
+  if (mode === 'actual-size') {
+    setShortcutContext('image-pan')
+  }
 })
 
 const isImageCorrupted = computed(() => {
