@@ -485,6 +485,10 @@ defineExpose({
   padding-left: 10px;
 }
 
+.tree-panel.collapsed .tree-item.grouped {
+  margin-left: 0;
+}
+
 .tree-item.grouped.active {
   border-left-color: #007bff;
   border-left-width: 3px;
