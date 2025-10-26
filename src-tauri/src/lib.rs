@@ -127,6 +127,14 @@ pub struct PaginatedFolderResult {
     limit: usize,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoadedSessionResult {
+    #[serde(rename = "sessionData")]
+    session_data: SessionData,
+    path: String,
+    name: String,
+}
+
 // Helper function to collect image files from a directory
 fn collect_image_files(target_path: &Path) -> Result<Vec<FileEntry>, String> {
     let mut entries = Vec::new();
@@ -503,14 +511,14 @@ async fn save_session_dialog(app_handle: tauri::AppHandle, session_data: Session
 }
 
 #[tauri::command]
-async fn load_session_dialog(app_handle: tauri::AppHandle) -> Result<Option<SessionData>, String> {
+async fn load_session_dialog(app_handle: tauri::AppHandle, state: State<'_, AppState>) -> Result<Option<LoadedSessionResult>, String> {
     use tauri_plugin_dialog::DialogExt;
     use std::sync::{Arc, Mutex};
     use tokio::sync::oneshot;
-    
+
     let (tx, rx) = oneshot::channel();
     let tx = Arc::new(Mutex::new(Some(tx)));
-    
+
     app_handle.dialog().file()
         .add_filter("Session Files", &["json"])
         .pick_file(move |file_path| {
@@ -520,22 +528,53 @@ async fn load_session_dialog(app_handle: tauri::AppHandle) -> Result<Option<Sess
                 }
             }
         });
-    
+
     match rx.await {
         Ok(Some(file_path)) => {
             let path_buf = file_path.as_path().unwrap();
             let path_str = path_buf.to_string_lossy().to_string();
-            
+
             // Read the file
             let json_data = std::fs::read_to_string(&path_buf)
                 .map_err(|e| format!("Failed to read session file: {}", e))?;
-            
+
             // Deserialize JSON data
             let session_data: SessionData = serde_json::from_str(&json_data)
                 .map_err(|e| format!("Failed to parse session data: {}", e))?;
-            
+
+            // Add to recent sessions list
+            add_recent_session(&state.recent_sessions, &path_str)?;
+            save_recent_sessions(&state.recent_sessions)?;
+
+            // Set this as the currently loaded session
+            let session_name = path_buf.file_stem()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            *state.loaded_session.lock().unwrap() = Some(LoadedSessionInfo {
+                name: session_name.clone(),
+                path: path_str.clone(),
+            });
+
+            // Update window title to show loaded session
+            let window_title = format!("Image Viewer: {}", session_name);
+            if let Err(e) = set_window_title(app_handle.clone(), window_title).await {
+                eprintln!("Warning: Failed to update window title: {}", e);
+            }
+
+            // Update the menu to reflect the new recent sessions list and loaded session
+            let recent_sessions = state.recent_sessions.lock().unwrap().clone();
+            let loaded_session = state.loaded_session.lock().unwrap().clone();
+            if let Err(e) = update_full_menu(&app_handle, &recent_sessions, &loaded_session) {
+                eprintln!("Warning: Failed to update menu: {}", e);
+            }
+
             println!("Session loaded from: {}", path_str);
-            Ok(Some(session_data))
+            Ok(Some(LoadedSessionResult {
+                session_data,
+                path: path_str,
+                name: session_name,
+            }))
         }
         Ok(None) => Ok(None), // User cancelled the dialog
         Err(_) => Err("Dialog operation failed".to_string()),

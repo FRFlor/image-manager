@@ -1398,6 +1398,17 @@ const saveSessionDialog = async () => {
     const savedPath = await sessionService.saveSessionDialog(sessionData)
     if (savedPath) {
       console.log('Session saved to:', savedPath)
+
+      // Update session tracking for reload/update functionality
+      // Extract session name from path
+      const pathParts = savedPath.split(/[\\/]/)
+      const fileName = pathParts[pathParts.length - 1] || 'unknown'
+      const sessionName = fileName.replace('.session.json', '')
+
+      currentSessionPath.value = savedPath
+      currentSessionName.value = sessionName
+      console.log(`Session tracking updated: ${sessionName} at ${savedPath}`)
+
       return true
     } else {
       console.log('Session save cancelled by user')
@@ -1412,10 +1423,16 @@ const saveSessionDialog = async () => {
 const loadSessionDialog = async () => {
   console.log('loadSessionDialog called')
   try {
-    const sessionData = await sessionService.loadSessionDialog()
-    console.log('Loaded session data from dialog:', sessionData)
-    if (sessionData) {
-      await restoreFromSession(sessionData)
+    const result = await sessionService.loadSessionDialog()
+    console.log('Loaded session result from dialog:', result)
+    if (result) {
+      await restoreFromSession(result.sessionData)
+
+      // Update session tracking for reload/update functionality
+      currentSessionPath.value = result.path
+      currentSessionName.value = result.name
+      console.log(`Session tracking updated: ${result.name} at ${result.path}`)
+
       console.log('Session restored successfully from dialog')
       return true
     }

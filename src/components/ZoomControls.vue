@@ -37,8 +37,6 @@ const {
   toggleFitMode,
 } = useZoomControls()
 
-const FIT_MODE_SEQUENCE: FitMode[] = ['fit-to-window', 'fit-by-width', 'fit-by-height', 'actual-size']
-
 const fitModeLabelMap: Record<FitMode, string> = {
   'fit-to-window': 'Fit Window',
   'fit-by-width': 'Fit Width',
@@ -47,18 +45,6 @@ const fitModeLabelMap: Record<FitMode, string> = {
 }
 
 const fitModeLabel = computed(() => fitModeLabelMap[fitMode.value])
-
-const nextFitModeLabel = computed(() => {
-  const currentIndex = FIT_MODE_SEQUENCE.indexOf(fitMode.value)
-  const safeIndex = currentIndex >= 0 ? currentIndex : 0
-  if (FIT_MODE_SEQUENCE.length === 0) {
-    return 'Next: Fit Window'
-  }
-  const nextMode = FIT_MODE_SEQUENCE[(safeIndex + 1) % FIT_MODE_SEQUENCE.length]
-  const resolvedMode: FitMode = nextMode ?? 'fit-to-window'
-  return `Next: ${fitModeLabelMap[resolvedMode]}`
-})
-
 </script>
 
 <style scoped>

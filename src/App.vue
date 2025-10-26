@@ -140,7 +140,7 @@ onMounted(async () => {
 
             // Extract session name from path
             const pathParts = sessionPath.split(/[\\/]/)
-            const fileName = pathParts[pathParts.length - 1]
+            const fileName = pathParts[pathParts.length - 1] || 'unknown'
             const sessionName = fileName.replace('.session.json', '')
 
             // Update session tracking in the component (these are refs)

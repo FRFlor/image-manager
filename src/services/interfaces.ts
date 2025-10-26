@@ -1,6 +1,6 @@
 // Service interfaces for the image viewer application
 
-import type { FileEntry, ImageData, SessionData, FitMode } from '../types'
+import type { FileEntry, ImageData, SessionData, LoadedSessionResult, FitMode } from '../types'
 
 /**
  * Interface for file system operations
@@ -39,9 +39,9 @@ export interface SessionService {
 
   /**
    * Load session data using native file dialog
-   * @returns The loaded session data or null if cancelled/failed
+   * @returns The loaded session result (with path/name metadata) or null if cancelled/failed
    */
-  loadSessionDialog(): Promise<SessionData | null>
+  loadSessionDialog(): Promise<LoadedSessionResult | null>
 
   /**
    * Save session data automatically (for app close/restore)

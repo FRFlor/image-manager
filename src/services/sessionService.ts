@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { SessionData } from '../types'
+import type { SessionData, LoadedSessionResult } from '../types'
 import type { SessionService } from './interfaces'
 
 /**
@@ -22,9 +22,9 @@ export class TauriSessionService implements SessionService {
   /**
    * Load session data using native file dialog
    */
-  async loadSessionDialog(): Promise<SessionData | null> {
+  async loadSessionDialog(): Promise<LoadedSessionResult | null> {
     try {
-      const result = await invoke<SessionData | null>('load_session_dialog')
+      const result = await invoke<LoadedSessionResult | null>('load_session_dialog')
       return result
     } catch (error) {
       console.error('Failed to load session via dialog:', error)

@@ -122,6 +122,15 @@ export interface SessionData {
 }
 
 /**
+ * Result from loading a session via dialog (includes path metadata)
+ */
+export interface LoadedSessionResult {
+  sessionData: SessionData
+  path: string
+  name: string
+}
+
+/**
  * Represents the overall application state
  */
 export interface ApplicationState {
