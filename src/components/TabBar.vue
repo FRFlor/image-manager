@@ -35,7 +35,6 @@
               <span v-else>▼</span>
             </button>
             <span v-if="!treeCollapsed" @click="selectGroupHeader(item.groupId!)" class="group-header-title">{{ getGroupName(item.groupId!) }}</span>
-            <span v-else class="group-header-indicator"></span>
           </div>
           <!-- Tab Item -->
           <div
@@ -471,13 +470,6 @@ defineExpose({
   display: none;
 }
 
-.group-header-indicator {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  background: currentColor;
-}
-
 /* Tab group styling - Tree layout (indented) */
 .tree-item.grouped {
   margin-left: 20px;
@@ -892,13 +884,6 @@ defineExpose({
 
 .tree-panel.collapsed .group-header-title {
   display: none;
-}
-
-.group-header-indicator {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  background: currentColor;
 }
 
 /* Tab group styling - Tree layout (indented) */
