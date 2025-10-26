@@ -274,7 +274,7 @@ watch(isZoomLocked, (locked) => {
 })
 
 watch(fitMode, (mode) => {
-  if (mode === 'actual-size') {
+  if (mode !== 'fit-to-window') {
     setShortcutContext('image-pan')
   }
 })
@@ -1026,16 +1026,15 @@ const optimizeMemoryUsage = () => {
 
 
 const tryHandleKeyboardPan = (event: KeyboardEvent): boolean => {
-  if (shortcutContext.value !== 'image-pan') {
-    return false
-  }
-
-  if (isZoomLocked.value) {
+  console.log("Attempting to handle keyboard pan:")
+  if (shortcutContext.value !== 'image-pan' || isZoomLocked.value) {
+    console.log("Keyboard pan rejected: ", {shortcutContext: shortcutContext.value, isZoomLocked: isZoomLocked.value})
     resetShortcutContext()
     return false
   }
 
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    console.log("Keyboard pan rejected due to modifier key pressed")
     return false
   }
 
