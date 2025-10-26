@@ -10,13 +10,13 @@
           −
         </button>
         <button @click="resetZoom" class="zoom-btn" title="Reset zoom (Ctrl/Cmd 0)">
-          ⌂
+          ↻
         </button>
         <button @click="zoomIn" class="zoom-btn" title="Zoom in (Ctrl/Cmd +)">
           +
         </button>
         <button @click="toggleFitMode" class="zoom-btn fit-toggle" title="Toggle fit modes (Ctrl/Cmd /)">
-          {{ nextFitModeLabel }}
+          🖼️
         </button>
       </div>
     </div>
