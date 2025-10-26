@@ -771,6 +771,22 @@ async fn clear_loaded_session(app: tauri::AppHandle, state: State<'_, AppState>)
 }
 
 #[tauri::command]
+async fn update_session_file(path: String, session_data: SessionData) -> Result<(), String> {
+    let path_obj = Path::new(&path);
+
+    // Serialize session data to JSON
+    let json_data = serde_json::to_string_pretty(&session_data)
+        .map_err(|e| format!("Failed to serialize session data: {}", e))?;
+
+    // Write to file
+    fs::write(&path_obj, json_data)
+        .map_err(|e| format!("Failed to write session file: {}", e))?;
+
+    println!("Session file updated at: {}", path);
+    Ok(())
+}
+
+#[tauri::command]
 async fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     println!("Exiting application...");
 
@@ -832,8 +848,8 @@ fn build_loaded_session_menu(app: &tauri::AppHandle, loaded_session: &Option<Loa
     use tauri::menu::SubmenuBuilder;
 
     if let Some(session_info) = loaded_session {
-        let menu_title = format!("Loaded Session: {}", session_info.name);
-        let loaded_menu = SubmenuBuilder::new(app, menu_title)
+        // Use just the session name as the menu title (without "Loaded Session:" prefix)
+        let loaded_menu = SubmenuBuilder::new(app, &session_info.name)
             .text("reload_session", "Reload")
             .text("update_session", "Update")
             .build()?;
@@ -940,6 +956,7 @@ pub fn run() {
             refresh_menu,
             set_loaded_session,
             clear_loaded_session,
+            update_session_file,
             exit_app
         ])
         .setup(|app| {

@@ -138,17 +138,17 @@ onMounted(async () => {
           if (sessionData && imageViewer.value) {
             await imageViewer.value.restoreFromSession(sessionData)
 
-            // Set the current session path and name in the ImageViewer component
             // Extract session name from path
             const pathParts = sessionPath.split(/[\\/]/)
             const fileName = pathParts[pathParts.length - 1]
             const sessionName = fileName.replace('.session.json', '')
 
-            // Update session tracking in the component
-            if (imageViewer.value) {
-              (imageViewer.value as any).currentSessionPath = sessionPath;
-              (imageViewer.value as any).currentSessionName = sessionName
-            }
+            // Update session tracking in the component (these are refs)
+            imageViewer.value.currentSessionPath = sessionPath
+            imageViewer.value.currentSessionName = sessionName
+
+            // Tell backend to update the menu with the loaded session
+            await invoke('set_loaded_session', { name: sessionName, path: sessionPath })
           }
         } catch (error) {
           console.error('Failed to load recent session from menu:', error)

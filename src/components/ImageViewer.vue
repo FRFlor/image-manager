@@ -1435,9 +1435,11 @@ const updateCurrentSession = async () => {
     const sessionData = createSessionData()
     sessionData.name = currentSessionName.value
 
-    // Save directly to the current session file
-    const { writeTextFile } = await import('@tauri-apps/plugin-fs')
-    await writeTextFile(currentSessionPath.value, JSON.stringify(sessionData, null, 2))
+    // Use backend command to write the session file
+    await invoke('update_session_file', {
+      path: currentSessionPath.value,
+      sessionData: sessionData
+    })
 
     console.log('Session updated successfully at:', currentSessionPath.value)
     return true
@@ -1447,7 +1449,7 @@ const updateCurrentSession = async () => {
   }
 }
 
-// Expose methods for parent component
+// Expose methods and refs for parent component
 defineExpose({
   openImage,
   saveAutoSession,
@@ -1457,7 +1459,9 @@ defineExpose({
   createSessionData,
   restoreFromSession,
   reloadCurrentSession,
-  updateCurrentSession
+  updateCurrentSession,
+  currentSessionPath,
+  currentSessionName
 })
 </script>
 
