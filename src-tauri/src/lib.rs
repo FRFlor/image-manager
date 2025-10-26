@@ -19,6 +19,7 @@ use metadata_cache::MetadataCache;
 struct AppState {
     is_exiting: Arc<Mutex<bool>>,
     metadata_cache: Arc<MetadataCache>,
+    recent_sessions: Arc<Mutex<Vec<String>>>, // Stores paths to recent manual sessions
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -409,14 +410,14 @@ async fn open_image_dialog(app_handle: tauri::AppHandle) -> Result<Option<String
 }
 
 #[tauri::command]
-async fn save_session_dialog(app_handle: tauri::AppHandle, session_data: SessionData) -> Result<Option<String>, String> {
+async fn save_session_dialog(app_handle: tauri::AppHandle, session_data: SessionData, state: State<'_, AppState>) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     use std::sync::{Arc, Mutex};
     use tokio::sync::oneshot;
-    
+
     let (tx, rx) = oneshot::channel();
     let tx = Arc::new(Mutex::new(Some(tx)));
-    
+
     // Create a default filename with timestamp if no name is provided
     let default_name = match &session_data.name {
         Some(name) => format!("{}.session.json", name),
@@ -425,7 +426,7 @@ async fn save_session_dialog(app_handle: tauri::AppHandle, session_data: Session
             format!("session_{}.session.json", now.format("%Y%m%d_%H%M%S"))
         }
     };
-    
+
     app_handle.dialog().file()
         .add_filter("Session Files", &["json"])
         .set_file_name(&default_name)
@@ -436,21 +437,26 @@ async fn save_session_dialog(app_handle: tauri::AppHandle, session_data: Session
                 }
             }
         });
-    
+
     match rx.await {
         Ok(Some(file_path)) => {
             let path_buf = file_path.as_path().unwrap();
             let path_str = path_buf.to_string_lossy().to_string();
-            
+
             // Serialize session data to JSON
             let json_data = serde_json::to_string_pretty(&session_data)
                 .map_err(|e| format!("Failed to serialize session data: {}", e))?;
-            
+
             // Write to file
             std::fs::write(&path_buf, json_data)
                 .map_err(|e| format!("Failed to write session file: {}", e))?;
-            
+
             println!("Session saved to: {}", path_str);
+
+            // Add to recent sessions list and persist
+            add_recent_session(&state.recent_sessions, &path_str)?;
+            save_recent_sessions(&state.recent_sessions)?;
+
             Ok(Some(path_str))
         }
         Ok(None) => Ok(None), // User cancelled the dialog
@@ -555,6 +561,136 @@ async fn load_auto_session() -> Result<Option<SessionData>, String> {
     Ok(Some(session_data))
 }
 
+// Helper function to add a session to the recent list (max 10 items)
+fn add_recent_session(recent_sessions: &Arc<Mutex<Vec<String>>>, path: &str) -> Result<(), String> {
+    let mut sessions = recent_sessions.lock().unwrap();
+
+    // Remove the path if it already exists (to move it to the front)
+    sessions.retain(|p| p != path);
+
+    // Add to the front
+    sessions.insert(0, path.to_string());
+
+    // Keep only the most recent 10
+    if sessions.len() > 10 {
+        sessions.truncate(10);
+    }
+
+    Ok(())
+}
+
+// Helper function to save recent sessions to disk
+fn save_recent_sessions(recent_sessions: &Arc<Mutex<Vec<String>>>) -> Result<(), String> {
+    use dirs;
+
+    let app_data_dir = dirs::data_dir()
+        .ok_or("Failed to get application data directory")?
+        .join("image-viewer");
+
+    fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+
+    let recent_sessions_file = app_data_dir.join("recent-sessions.json");
+
+    let sessions = recent_sessions.lock().unwrap();
+    let json_data = serde_json::to_string_pretty(&*sessions)
+        .map_err(|e| format!("Failed to serialize recent sessions: {}", e))?;
+
+    fs::write(&recent_sessions_file, json_data)
+        .map_err(|e| format!("Failed to write recent sessions file: {}", e))?;
+
+    Ok(())
+}
+
+// Helper function to load recent sessions from disk
+fn load_recent_sessions() -> Vec<String> {
+    use dirs;
+
+    let app_data_dir = match dirs::data_dir() {
+        Some(dir) => dir.join("image-viewer"),
+        None => return Vec::new(),
+    };
+
+    let recent_sessions_file = app_data_dir.join("recent-sessions.json");
+
+    if !recent_sessions_file.exists() {
+        return Vec::new();
+    }
+
+    match fs::read_to_string(&recent_sessions_file) {
+        Ok(json_data) => {
+            match serde_json::from_str::<Vec<String>>(&json_data) {
+                Ok(sessions) => {
+                    // Validate that files still exist and filter out missing ones
+                    sessions.into_iter()
+                        .filter(|path| Path::new(path).exists())
+                        .collect()
+                }
+                Err(e) => {
+                    eprintln!("Failed to parse recent sessions: {}", e);
+                    Vec::new()
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to read recent sessions file: {}", e);
+            Vec::new()
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RecentSessionInfo {
+    path: String,
+    name: String,
+}
+
+#[tauri::command]
+async fn get_recent_sessions(state: State<'_, AppState>) -> Result<Vec<RecentSessionInfo>, String> {
+    let sessions = state.recent_sessions.lock().unwrap();
+
+    let mut result = Vec::new();
+    for path in sessions.iter() {
+        // Extract filename from path
+        let path_obj = Path::new(path);
+        let name = path_obj.file_stem()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Unknown")
+            .to_string();
+
+        result.push(RecentSessionInfo {
+            path: path.clone(),
+            name,
+        });
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+async fn load_session_from_path(path: String, state: State<'_, AppState>) -> Result<SessionData, String> {
+    let path_obj = Path::new(&path);
+
+    if !path_obj.exists() {
+        return Err(format!("Session file does not exist: {}", path));
+    }
+
+    // Read the file
+    let json_data = fs::read_to_string(&path_obj)
+        .map_err(|e| format!("Failed to read session file: {}", e))?;
+
+    // Deserialize JSON data
+    let session_data: SessionData = serde_json::from_str(&json_data)
+        .map_err(|e| format!("Failed to parse session data: {}", e))?;
+
+    // Add to recent sessions list
+    add_recent_session(&state.recent_sessions, &path)?;
+    save_recent_sessions(&state.recent_sessions)?;
+
+    println!("Session loaded from: {}", path);
+    Ok(session_data)
+}
+
 #[tauri::command]
 async fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     println!("Exiting application...");
@@ -601,9 +737,13 @@ pub fn run() {
     };
 
     // Initialize app state
+    let recent_sessions = load_recent_sessions();
+    println!("Loaded {} recent sessions", recent_sessions.len());
+
     let app_state = AppState {
         is_exiting: Arc::new(Mutex::new(false)),
         metadata_cache,
+        recent_sessions: Arc::new(Mutex::new(recent_sessions)),
     };
 
     tauri::Builder::default()
@@ -622,14 +762,47 @@ pub fn run() {
             load_session_dialog,
             save_auto_session,
             load_auto_session,
+            get_recent_sessions,
+            load_session_from_path,
             exit_app
         ])
         .setup(|app| {
             // --- Build the application menu ---
+            // Get recent sessions from state
+            let app_state: State<AppState> = app.state();
+            let recent_sessions = app_state.recent_sessions.lock().unwrap().clone();
+
+            // Build "Recent Saved Sessions" submenu
+            let mut recent_menu_builder = SubmenuBuilder::new(app, "Recent Saved Sessions");
+
+            // Add "Last Autosaved Session" at the top
+            recent_menu_builder = recent_menu_builder
+                .text("load_auto_session_menu", "Last Autosaved Session");
+
+            if !recent_sessions.is_empty() {
+                recent_menu_builder = recent_menu_builder.separator();
+
+                // Add up to 10 recent manual sessions
+                for (idx, session_path) in recent_sessions.iter().take(10).enumerate() {
+                    let path_obj = Path::new(session_path);
+                    let name = path_obj.file_stem()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("Unknown")
+                        .to_string();
+
+                    // Use index-based ID so we can match it in the event handler
+                    let menu_id = format!("load_recent_{}", idx);
+                    recent_menu_builder = recent_menu_builder.text(&menu_id, name);
+                }
+            }
+
+            let recent_menu = recent_menu_builder.build()?;
+
             // "File" submenu with our custom items and the native Close Window
             let file_menu = SubmenuBuilder::new(app, "File")
                 .text("save_session",  "Save Session")
                 .text("load_session", "Load Session")
+                .item(&recent_menu)
                 .separator()
                 // Keep the platform-native Close Window (Cmd/Ctrl+W etc.)
                 .item(&PredefinedMenuItem::close_window(app, Some("Close Window"))?)
@@ -648,8 +821,10 @@ pub fn run() {
 
             // --- Handle menu clicks ---
             // Dispatch simple events to the frontend. (Or perform Rust logic here)
-            app.on_menu_event(|app_handle, event| {
-                match event.id().0.as_str() {
+            let recent_sessions_for_event = recent_sessions.clone();
+            app.on_menu_event(move |app_handle, event| {
+                let event_id = event.id().0.as_str();
+                match event_id {
                     "save_session" => {
                         // Frontend can listen to this and call save routine / command
                         let _ = app_handle.emit("menu-save-session", ());
@@ -657,8 +832,21 @@ pub fn run() {
                     "load_session" => {
                         let _ = app_handle.emit("menu-load-session", ());
                     }
+                    "load_auto_session_menu" => {
+                        let _ = app_handle.emit("menu-load-auto-session", ());
+                    }
                     "toggle_controls" => {
                         let _ = app_handle.emit("menu-toggle-controls", ());
+                    }
+                    id if id.starts_with("load_recent_") => {
+                        // Extract index from menu ID
+                        if let Some(idx_str) = id.strip_prefix("load_recent_") {
+                            if let Ok(idx) = idx_str.parse::<usize>() {
+                                if let Some(session_path) = recent_sessions_for_event.get(idx) {
+                                    let _ = app_handle.emit("menu-load-recent-session", session_path.clone());
+                                }
+                            }
+                        }
                     }
                     _ => {}
                 }

@@ -99,6 +99,30 @@ onMounted(async () => {
         }
       })
 
+      // Listen for menu load auto-session event
+      await listen('menu-load-auto-session', async () => {
+        console.log('Menu load auto-session requested')
+        try {
+          await imageViewer.value?.loadAutoSession()
+        } catch (error) {
+          console.error('Failed to load auto-session from menu:', error)
+        }
+      })
+
+      // Listen for menu load recent session event
+      await listen<string>('menu-load-recent-session', async (event) => {
+        console.log('Menu load recent session requested:', event.payload)
+        try {
+          const sessionPath = event.payload
+          const sessionData = await invoke<any>('load_session_from_path', { path: sessionPath })
+          if (sessionData && imageViewer.value) {
+            await imageViewer.value.restoreSession(sessionData)
+          }
+        } catch (error) {
+          console.error('Failed to load recent session from menu:', error)
+        }
+      })
+
       console.log('Event listeners set up successfully')
     } catch (error) {
       console.error('Failed to set up event listeners:', error)
