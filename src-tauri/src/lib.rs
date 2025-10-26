@@ -19,7 +19,8 @@ use metadata_cache::MetadataCache;
 #[derive(Debug, Clone)]
 struct LoadedSessionInfo {
     name: String,
-    path: String,
+    #[allow(dead_code)]
+    path: String, // Used for reload functionality, but not directly accessed in Rust
 }
 
 // Application state to track if we're in the process of exiting
