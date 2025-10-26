@@ -111,9 +111,6 @@
         <div class="context-menu-item" @click="handleContextMenuRemoveFromGroup">
           Remove from Group
         </div>
-        <div class="context-menu-item" @click="handleContextMenuDissolveGroup">
-          Dissolve Group
-        </div>
         <div class="context-menu-separator"></div>
       </template>
 
