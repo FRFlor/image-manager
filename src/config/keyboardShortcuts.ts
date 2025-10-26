@@ -211,7 +211,7 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     key: '/',
     modifiers: { ctrl: true },
     action: 'toggleFitMode',
-    description: 'Toggle between fit-to-window and actual size (Ctrl /)'
+    description: 'Toggle fit modes (Ctrl /)'
   },
 
   // Zoom and Pan Controls (Mac)
@@ -243,7 +243,7 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     key: '/',
     modifiers: { meta: true },
     action: 'toggleFitMode',
-    description: 'Toggle between fit-to-window and actual size (Cmd /)'
+    description: 'Toggle fit modes (Cmd /)'
   },
 
   // Session Management (for testing)

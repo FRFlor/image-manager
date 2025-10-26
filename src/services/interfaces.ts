@@ -1,6 +1,6 @@
 // Service interfaces for the image viewer application
 
-import type { FileEntry, ImageData, SessionData } from '../types'
+import type { FileEntry, ImageData, SessionData, FitMode } from '../types'
 
 /**
  * Interface for file system operations
@@ -101,7 +101,7 @@ export interface ZoomController {
   zoomOut(): void
   
   /**
-   * Toggle between fit-to-window and actual size modes
+   * Toggle through available fit modes
    */
   toggleFitMode(): void
   
@@ -118,7 +118,7 @@ export interface ZoomController {
   /**
    * Get current fit mode
    */
-  getFitMode(): 'fit-to-window' | 'actual-size'
+  getFitMode(): FitMode
 }
 
 /**

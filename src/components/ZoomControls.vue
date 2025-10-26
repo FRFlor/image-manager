@@ -2,10 +2,10 @@
   <div class="zoom-controls">
       <div class="zoom-info">
         <span class="zoom-level">{{ Math.round(zoomLevel * 100) }}%</span>
-        <span class="fit-mode">{{ fitMode === 'fit-to-window' ? 'Fit' : 'Actual' }}</span>
+        <span class="fit-mode">{{ fitModeLabel }}</span>
       </div>
       <div class="zoom-buttons">
-        <button @click="zoomOut" class="zoom-btn" :disabled="fitMode === 'fit-to-window'"
+        <button @click="zoomOut" class="zoom-btn" :disabled="isZoomLocked"
                 title="Zoom out (Ctrl/Cmd -)">
           −
         </button>
@@ -15,15 +15,17 @@
         <button @click="zoomIn" class="zoom-btn" title="Zoom in (Ctrl/Cmd +)">
           +
         </button>
-        <button @click="toggleFitMode" class="zoom-btn fit-toggle" title="Toggle fit mode (Ctrl/Cmd /)">
-          {{ fitMode === 'fit-to-window' ? '1:1' : 'Fit' }}
+        <button @click="toggleFitMode" class="zoom-btn fit-toggle" title="Toggle fit modes (Ctrl/Cmd /)">
+          {{ nextFitModeLabel }}
         </button>
       </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import {useZoomControls} from "../composables/useZoomControls.ts"
+import { computed } from 'vue'
+import { useZoomControls } from "../composables/useZoomControls.ts"
+import type { FitMode } from "../types"
 
 const {
   zoomLevel,
@@ -33,6 +35,30 @@ const {
   resetZoom,
   toggleFitMode,
 } = useZoomControls()
+
+const FIT_MODE_SEQUENCE: FitMode[] = ['fit-to-window', 'fit-by-width', 'fit-by-height', 'actual-size']
+
+const fitModeLabelMap: Record<FitMode, string> = {
+  'fit-to-window': 'Fit Window',
+  'fit-by-width': 'Fit Width',
+  'fit-by-height': 'Fit Height',
+  'actual-size': 'Actual Size',
+}
+
+const fitModeLabel = computed(() => fitModeLabelMap[fitMode.value])
+
+const nextFitModeLabel = computed(() => {
+  const currentIndex = FIT_MODE_SEQUENCE.indexOf(fitMode.value)
+  const safeIndex = currentIndex >= 0 ? currentIndex : 0
+  if (FIT_MODE_SEQUENCE.length === 0) {
+    return 'Next: Fit Window'
+  }
+  const nextMode = FIT_MODE_SEQUENCE[(safeIndex + 1) % FIT_MODE_SEQUENCE.length]
+  const resolvedMode: FitMode = nextMode ?? 'fit-to-window'
+  return `Next: ${fitModeLabelMap[resolvedMode]}`
+})
+
+const isZoomLocked = computed(() => fitMode.value !== 'actual-size')
 </script>
 
 <style scoped>

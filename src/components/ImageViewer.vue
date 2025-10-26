@@ -11,7 +11,7 @@
     <div class="image-display" v-if="activeImage || isImageCorrupted">
       <div class="image-container" ref="imageContainer" @wheel="handleWheel" @mousedown="handleMouseDown" :class="{
         'dragging': isDragging,
-        'pannable': fitMode === 'actual-size'
+        'pannable': fitMode !== 'fit-to-window'
       }">
         <!-- Corrupted Image Placeholder -->
         <div v-if="isImageCorrupted" class="corrupted-placeholder">
@@ -42,10 +42,16 @@
 
         <!-- Valid Image -->
         <img v-else-if="activeImage" ref="imageElement" :src="activeImage.assetUrl" :alt="activeImage.name" class="main-image"
-          :class="{ 'fit-to-window': fitMode === 'fit-to-window' }" :style="{
+          :class="{
+            'fit-to-window': fitMode === 'fit-to-window',
+            'fit-by-width': fitMode === 'fit-by-width',
+            'fit-by-height': fitMode === 'fit-by-height'
+          }" :style="{
             transform: fitMode === 'actual-size'
               ? `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`
-              : 'none'
+              : fitMode === 'fit-to-window'
+                ? 'none'
+                : `translate(${panOffset.x}px, ${panOffset.y}px)`
           }" @load="onImageLoad" @error="onImageError" @dragstart.prevent />
 
       </div>
@@ -1492,9 +1498,23 @@ defineExpose({
 }
 
 .main-image.fit-to-window {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+.main-image.fit-by-width {
+  width: 100%;
+  height: auto;
+  max-height: none;
+}
+
+.main-image.fit-by-height {
+  height: 100%;
+  width: auto;
+  max-width: none;
 }
 
 /* Corrupted Image Placeholder */

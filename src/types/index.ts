@@ -69,6 +69,8 @@ export interface TabGroup {
   collapsed?: boolean // Whether group is collapsed in tree view
 }
 
+export type FitMode = 'fit-to-window' | 'fit-by-width' | 'fit-by-height' | 'actual-size'
+
 /**
  * Represents a tab containing an image
  */
@@ -81,7 +83,7 @@ export interface TabData {
   isFullyLoaded?: boolean // Tracks if folder context and adjacent images are loaded
   groupId?: string // Optional reference to parent group
   zoomLevel?: number // Zoom level for this tab
-  fitMode?: 'fit-to-window' | 'actual-size' // Fit mode for this tab
+  fitMode?: FitMode // Fit mode for this tab
   panOffset?: { x: number; y: number } // Pan offset for this tab
 }
 
@@ -96,7 +98,7 @@ export interface SessionData {
     order: number
     groupId?: string
     zoomLevel?: number
-    fitMode?: 'fit-to-window' | 'actual-size'
+    fitMode?: FitMode
     panOffset?: { x: number; y: number }
   }>
   groups?: Array<{
@@ -143,4 +145,3 @@ export type {
   ZoomController,
   TabManager
 } from './services'
-
