@@ -118,13 +118,12 @@ import type { ImageData, TabData, SessionData, FolderContext, FileEntry, TabGrou
 import GroupGridPreview from './GroupGridPreview.vue'
 import TabBar from './TabBar.vue'
 import ZoomControls from './ZoomControls.vue'
-import { KEYBOARD_SHORTCUTS, matchesShortcut } from '../config/keyboardShortcuts'
 import { sessionService } from '../services/sessionService'
 import { memoryManager, ManagedResource } from '../utils/memoryManager'
 import { lazyImageLoader } from '../utils/lazyLoader'
 import { useTabControls } from '../composables/useTabControls'
 import { useZoomControls } from '../composables/useZoomControls'
-import { useShortcutContext } from '../composables/useShortcutContext'
+import { useShortcutContext, type KeyboardActions } from '../composables/useShortcutContext'
 import {useUIConfigurations} from "../composables/useUIConfigurations.ts"
 
 // Props and Emits
@@ -185,8 +184,6 @@ const {
 } = useZoomControls()
 
 const { areZoomAndNavigationControlsVisible } = useUIConfigurations()
-const { shortcutContext, setShortcutContext, resetShortcutContext } = useShortcutContext()
-const KEYBOARD_PAN_STEP = 40
 
 // Reactive state
 const currentFolderImages = ref<ImageData[]>([])
@@ -206,8 +203,6 @@ const pendingNavigationDirection = ref<'next' | 'prev' | null>(null)
 const navigationQueue = ref<Array<'next' | 'prev'>>([])
 const MAX_NAVIGATION_QUEUE_DEPTH = 3 // Maximum number of pending navigations
 const navigationSequenceId = ref(0)
-const lastKeyPressTime = ref(0)
-const KEY_REPEAT_THRESHOLD = 50 // ms - minimum time between key presses to prevent excessive queuing
 
 const imageElement = ref<HTMLImageElement>()
 
@@ -1024,131 +1019,30 @@ const optimizeMemoryUsage = () => {
 
 // toggleGroupCollapse is provided by the composable
 
-
-const tryHandleKeyboardPan = (event: KeyboardEvent): boolean => {
-  console.log("Attempting to handle keyboard pan:")
-  if (shortcutContext.value !== 'image-pan' || isZoomLocked.value) {
-    console.log("Keyboard pan rejected: ", {shortcutContext: shortcutContext.value, isZoomLocked: isZoomLocked.value})
-    resetShortcutContext()
-    return false
-  }
-
-  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
-    console.log("Keyboard pan rejected due to modifier key pressed")
-    return false
-  }
-
-  let deltaX = 0
-  let deltaY = 0
-
-  switch (event.key) {
-    case 'ArrowUp':
-      deltaY = KEYBOARD_PAN_STEP
-      break
-    case 'ArrowDown':
-      deltaY = -KEYBOARD_PAN_STEP
-      break
-    case 'ArrowLeft':
-      deltaX = KEYBOARD_PAN_STEP
-      break
-    case 'ArrowRight':
-      deltaX = -KEYBOARD_PAN_STEP
-      break
-    default:
-      return false
-  }
-
-  event.preventDefault()
-  panImageBy(deltaX, deltaY)
-  return true
+// Initialize keyboard shortcut handling with action callbacks
+const keyboardActions: KeyboardActions = {
+  nextImage,
+  previousImage,
+  nextTab: switchToNextTab,
+  previousTab: switchToPreviousTab,
+  openImageInNewTab,
+  createNewTab,
+  closeCurrentTab,
+  moveTabRight: () => moveTabRight(),
+  moveTabLeft: () => moveTabLeft(),
+  joinWithLeft,
+  joinWithRight,
+  zoomIn,
+  zoomOut,
+  resetZoom,
+  toggleFitMode,
+  panImageBy,
+  saveAutoSession: () => saveAutoSession()
 }
 
-// Enhanced keyboard navigation using configuration
-const handleKeyDown = (event: KeyboardEvent) => {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-    return // Don't handle keyboard shortcuts when typing in inputs
-  }
-
-  if (tryHandleKeyboardPan(event)) {
-    return
-  }
-
-  // Find matching shortcut from configuration
-  console.log(`Keyboard event:`, {event})
-
-  const matchingShortcut = KEYBOARD_SHORTCUTS.find(shortcut => matchesShortcut(event, shortcut))
-
-  if (matchingShortcut) {
-    event.preventDefault()
-
-    // Throttle rapid key repeats for navigation actions
-    if (matchingShortcut.action === 'nextImage' || matchingShortcut.action === 'previousImage') {
-      const now = Date.now()
-      const timeSinceLastPress = now - lastKeyPressTime.value
-
-      // If key is being held down (rapid repeat), throttle to avoid queuing too many navigations
-      if (event.repeat && timeSinceLastPress < KEY_REPEAT_THRESHOLD) {
-        return // Skip this repeat event
-      }
-
-      lastKeyPressTime.value = now
-    }
-
-    // Execute the action based on the shortcut configuration
-    switch (matchingShortcut.action) {
-      case 'nextImage':
-        nextImage()
-        break
-      case 'previousImage':
-        previousImage()
-        break
-      case 'nextTab':
-        switchToNextTab()
-        break
-      case 'previousTab':
-        switchToPreviousTab()
-        break
-      case 'openImageInNewTab':
-        openImageInNewTab()
-        break
-      case 'createNewTab':
-        createNewTab()
-        break
-      case 'closeCurrentTab':
-        closeCurrentTab()
-        break
-      case 'moveTabRight':
-        moveTabRight()
-        break
-      case 'moveTabLeft':
-        moveTabLeft()
-        break
-      case 'joinWithLeft':
-        joinWithLeft()
-        break
-      case 'joinWithRight':
-        joinWithRight()
-        break
-      case 'zoomIn':
-        zoomIn()
-        break
-      case 'zoomOut':
-        zoomOut()
-        break
-      case 'resetZoom':
-        resetZoom()
-        break
-      case 'toggleFitMode':
-        toggleFitMode()
-        break
-      case 'saveAutoSession':
-        saveAutoSession()
-        break
-      default:
-        console.warn(`Unknown action: ${matchingShortcut.action}`)
-    }
-  }
-}
+const { setShortcutContext, resetShortcutContext, handleKeyDown } = useShortcutContext(
+  keyboardActions
+)
 
 
 
