@@ -79,16 +79,26 @@ export function useShortcutContext(actions?: KeyboardActions) {
 
     switch (event.key) {
       case 'ArrowUp':
+      case 'w':
         deltaY = KEYBOARD_PAN_STEP
         break
       case 'ArrowDown':
+      case 's':
         deltaY = -KEYBOARD_PAN_STEP
         break
       case 'ArrowLeft':
+      case 'a':
         deltaX = KEYBOARD_PAN_STEP
         break
       case 'ArrowRight':
+      case 'd':
         deltaX = -KEYBOARD_PAN_STEP
+        break
+      case 'e':
+        actions.zoomIn()
+        break
+      case 'q':
+        actions.zoomOut()
         break
       default:
         return false
