@@ -11,7 +11,6 @@ const tabFolderContexts = ref<Map<string, FolderContext>>(new Map())
 // Tab groups state
 const tabGroups = ref<Map<string, TabGroup>>(new Map())
 const selectedGroupId = ref<string | null>(null)
-const collapsedGroupIds = ref<Set<string>>(new Set())
 let nextGroupColorIndex = 0
 
 // Context menu state
@@ -50,7 +49,8 @@ export function useTabControls() {
         processedGroups.add(tab.groupId)
       }
       // Add the tab only if its group is not collapsed (or if it has no group)
-      if (!tab.groupId || !collapsedGroupIds.value.has(tab.groupId)) {
+      const group = tab.groupId ? tabGroups.value.get(tab.groupId) : null
+      if (!tab.groupId || !group?.collapsed) {
         items.push({ type: 'tab', tab })
       }
     }
@@ -491,13 +491,11 @@ export function useTabControls() {
   }
 
   const toggleGroupCollapse = (groupId: string) => {
-    if (collapsedGroupIds.value.has(groupId)) {
-      collapsedGroupIds.value.delete(groupId)
-      console.log(`Group ${groupId} expanded`)
-    } else {
-      collapsedGroupIds.value.add(groupId)
-      console.log(`Group ${groupId} collapsed`)
-    }
+    const group = tabGroups.value.get(groupId)
+    if (!group) return
+
+    group.collapsed = !group.collapsed
+    console.log(`Group ${groupId} ${group.collapsed ? 'collapsed' : 'expanded'}`)
   }
 
   const moveGroupRight = (groupId: string): void => {
@@ -988,7 +986,6 @@ export function useTabControls() {
     tabFolderContexts,
     tabGroups,
     selectedGroupId,
-    collapsedGroupIds,
     contextMenuVisible,
     contextMenuPosition,
     contextMenuTabId,

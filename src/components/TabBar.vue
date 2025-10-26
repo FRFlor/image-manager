@@ -29,10 +29,10 @@
               active: selectedGroupId === item.groupId,
               'group-blue': getGroupColor(item.groupId!) === 'blue',
               'group-orange': getGroupColor(item.groupId!) === 'orange',
-              collapsed: collapsedGroupIds.has(item.groupId!)
+              collapsed: tabGroups.get(item.groupId!)?.collapsed === true
             }">
-            <button @click.stop="toggleGroupCollapse(item.groupId!)" class="group-collapse-btn" :title="collapsedGroupIds.has(item.groupId!) ? 'Expand group' : 'Collapse group'">
-              <span v-if="collapsedGroupIds.has(item.groupId!)">▶</span>
+            <button @click.stop="toggleGroupCollapse(item.groupId!)" class="group-collapse-btn" :title="tabGroups.get(item.groupId!)?.collapsed ? 'Expand group' : 'Collapse group'">
+              <span v-if="tabGroups.get(item.groupId!)?.collapsed">▶</span>
               <span v-else>▼</span>
             </button>
             <span v-if="!treeCollapsed" @click="selectGroupHeader(item.groupId!)" class="group-header-title">{{ getGroupName(item.groupId!) }}</span>
@@ -167,11 +167,11 @@ const emit = defineEmits<{
 // Use tab controls composable
 const {
   tabs,
+  tabGroups,
   activeTabId,
   sortedTabs,
   treeViewItems,
   selectedGroupId,
-  collapsedGroupIds,
   contextMenuVisible,
   contextMenuPosition,
   contextMenuTabId,
