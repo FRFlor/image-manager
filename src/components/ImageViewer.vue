@@ -204,6 +204,9 @@ const navigationQueue = ref<Array<'next' | 'prev'>>([])
 const MAX_NAVIGATION_QUEUE_DEPTH = 3 // Maximum number of pending navigations
 const navigationSequenceId = ref(0)
 
+// Track if we're currently switching tabs to avoid changing shortcut context
+const isSwitchingTabs = ref(false)
+
 const imageElement = ref<HTMLImageElement>()
 
 // Computed properties
@@ -268,8 +271,10 @@ watch(isZoomLocked, (locked) => {
   }
 })
 
+// When fitMode changes due to user interaction (not tab switching),
+// enter image-pan mode if we're not in fit-to-window
 watch(fitMode, (mode) => {
-  if (mode !== 'fit-to-window') {
+  if (!isSwitchingTabs.value && mode !== 'fit-to-window') {
     setShortcutContext('image-pan')
   }
 })
@@ -399,7 +404,13 @@ const switchToTab = async (tabId: string) => {
   scrollActiveTabIntoView()
 
   // Restore zoom and pan state for the new tab
+  // Set flag to prevent fitMode watcher from changing shortcut context
+  isSwitchingTabs.value = true
   loadZoomAndPanStateFromTab(tab);
+  // Reset flag after Vue processes the change
+  nextTick(() => {
+    isSwitchingTabs.value = false
+  })
 
   // Load folder context for this tab if needed (lazy loading)
   if (!tab.isFullyLoaded) {
