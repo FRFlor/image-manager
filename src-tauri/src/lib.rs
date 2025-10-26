@@ -739,6 +739,7 @@ async fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(
 // Helper function to build the Recent Sessions submenu
 fn build_recent_sessions_submenu(app: &tauri::AppHandle, recent_sessions: &[String]) -> Result<tauri::menu::Submenu<tauri::Wry>, tauri::Error> {
     use tauri::menu::SubmenuBuilder;
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 
     let mut recent_menu_builder = SubmenuBuilder::new(app, "Recent Saved Sessions");
 
@@ -750,15 +751,16 @@ fn build_recent_sessions_submenu(app: &tauri::AppHandle, recent_sessions: &[Stri
         recent_menu_builder = recent_menu_builder.separator();
 
         // Add up to 10 recent manual sessions
-        for (idx, session_path) in recent_sessions.iter().take(10).enumerate() {
+        for session_path in recent_sessions.iter().take(10) {
             let path_obj = Path::new(session_path);
             let name = path_obj.file_stem()
                 .and_then(|n| n.to_str())
                 .unwrap_or("Unknown")
                 .to_string();
 
-            // Use index-based ID so we can match it in the event handler
-            let menu_id = format!("load_recent_{}", idx);
+            // Encode the full path in the menu ID (base64 to handle special characters)
+            let encoded_path = URL_SAFE_NO_PAD.encode(session_path.as_bytes());
+            let menu_id = format!("load_recent_path_{}", encoded_path);
             recent_menu_builder = recent_menu_builder.text(&menu_id, name);
         }
     }
@@ -884,8 +886,9 @@ pub fn run() {
 
             // --- Handle menu clicks ---
             // Dispatch simple events to the frontend. (Or perform Rust logic here)
-            let recent_sessions_for_event = recent_sessions.clone();
             app.on_menu_event(move |app_handle, event| {
+                use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
                 let event_id = event.id().0.as_str();
                 match event_id {
                     "save_session" => {
@@ -901,12 +904,12 @@ pub fn run() {
                     "toggle_controls" => {
                         let _ = app_handle.emit("menu-toggle-controls", ());
                     }
-                    id if id.starts_with("load_recent_") => {
-                        // Extract index from menu ID
-                        if let Some(idx_str) = id.strip_prefix("load_recent_") {
-                            if let Ok(idx) = idx_str.parse::<usize>() {
-                                if let Some(session_path) = recent_sessions_for_event.get(idx) {
-                                    let _ = app_handle.emit("menu-load-recent-session", session_path.clone());
+                    id if id.starts_with("load_recent_path_") => {
+                        // Extract and decode the path from menu ID
+                        if let Some(encoded_path) = id.strip_prefix("load_recent_path_") {
+                            if let Ok(decoded_bytes) = URL_SAFE_NO_PAD.decode(encoded_path) {
+                                if let Ok(session_path) = String::from_utf8(decoded_bytes) {
+                                    let _ = app_handle.emit("menu-load-recent-session", session_path);
                                 }
                             }
                         }

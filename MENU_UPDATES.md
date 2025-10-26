@@ -77,6 +77,19 @@ await sessionService.refreshRecentSessionsMenu()
 
 **Note:** Tauri requires rebuilding the entire menu structure to update a submenu. Individual menu items cannot be updated in isolation.
 
+### Menu Item IDs (Path-Based, Not Index-Based)
+
+To ensure menu items always point to the correct session regardless of list reordering, we use **path-based menu IDs** instead of index-based IDs:
+
+**Format:** `load_recent_path_{base64_encoded_path}`
+
+Example:
+- Session path: `/Users/you/Documents/my-session.session.json`
+- Base64 encoded: `L1VzZXJzL3lvdS9Eb2N1bWVudHMvbXktc2Vzc2lvbi5zZXNzaW9uLmpzb24`
+- Menu ID: `load_recent_path_L1VzZXJzL3lvdS9Eb2N1bWVudHMvbXktc2Vzc2lvbi5zZXNzaW9uLmpzb24`
+
+This prevents bugs where clicking a menu item would load the wrong session after the list was reordered.
+
 ### Recent Sessions Limit
 
 The recent sessions list is limited to **10 items** (most recent first). When an 11th session is added, the oldest is automatically removed.
