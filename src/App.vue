@@ -178,15 +178,26 @@ const waitForComponent = async () => {
     // Use nextTick to ensure component is mounted
     nextTick(async () => {
       try {
-        console.log('Attempting to load auto-session...')
-        const sessionLoaded = await imageViewer.value?.loadAutoSession()
-        if (sessionLoaded) {
-          console.log('Auto-session loaded and restored')
+        // First, check for derivative session (takes precedence)
+        console.log('Checking for derivative session...')
+        const derivativeSession = await invoke<any>('load_derivative_session')
+
+        if (derivativeSession) {
+          console.log('Derivative session found, loading...')
+          await imageViewer.value?.restoreFromSession(derivativeSession)
+          console.log('Derivative session loaded and restored')
         } else {
-          console.log('No auto-session found')
+          // Fall back to auto-session if no derivative session exists
+          console.log('No derivative session, attempting to load auto-session...')
+          const sessionLoaded = await imageViewer.value?.loadAutoSession()
+          if (sessionLoaded) {
+            console.log('Auto-session loaded and restored')
+          } else {
+            console.log('No auto-session found')
+          }
         }
       } catch (error) {
-        console.error('Failed to load auto-session:', error)
+        console.error('Failed to load session:', error)
       } finally {
         // Application is ready
         loadingState.value = {

@@ -23,6 +23,7 @@
           <!-- Group Header -->
           <div
             v-if="item.type === 'group'"
+            @contextmenu.prevent="showGroupContextMenu($event, item.groupId!)"
             class="tree-group-header"
             :class="{
               active: selectedGroupId === item.groupId,
@@ -116,6 +117,10 @@
         <div class="context-menu-separator"></div>
       </template>
 
+      <div class="context-menu-item" @click="handleOpenTabInNewWindow">
+        Open Tab in New Window
+      </div>
+      <div class="context-menu-separator"></div>
       <div class="context-menu-item" @click="emit('tabClosed', contextMenuTabId!)">
         Close Tab
       </div>
@@ -128,6 +133,21 @@
       </div>
       <div class="context-menu-item" @click="handleCloseTabsToRight">
         Close Tabs to Right
+      </div>
+    </div>
+
+    <!-- Group Context Menu -->
+    <div v-if="groupContextMenuVisible" class="context-menu"
+      :style="{ left: groupContextMenuPosition.x + 'px', top: groupContextMenuPosition.y + 'px' }">
+      <div class="context-menu-item" @click="handleOpenGroupInNewWindow">
+        Open Group in New Window
+      </div>
+      <div class="context-menu-separator"></div>
+      <div class="context-menu-item" @click="handleGroupContextMenuRenameGroup">
+        Rename Group...
+      </div>
+      <div class="context-menu-item" @click="handleGroupContextMenuDissolveGroup">
+        Dissolve Group
       </div>
     </div>
   </div>
@@ -173,6 +193,8 @@ const {
   renameGroup,
   removeTabFromGroup,
   dissolveGroup,
+  openTabInNewWindow,
+  openGroupInNewWindow,
 
   layoutPosition,
   layoutSize,
@@ -181,6 +203,11 @@ const {
   toggleLayoutSize,
   toggleTreeCollapse,
 } = useTabControls()
+
+// Group context menu state
+const groupContextMenuVisible = ref(false)
+const groupContextMenuPosition = ref({ x: 0, y: 0 })
+const groupContextMenuGroupId = ref<string | null>(null)
 
 // Template refs
 const treeItemsContainer = ref<HTMLElement>()
@@ -253,6 +280,71 @@ const handleContextMenuDissolveGroup = () => {
   }
 
   contextMenuVisible.value = false
+}
+
+// Group context menu handlers
+const showGroupContextMenu = (event: MouseEvent, groupId: string) => {
+  event.preventDefault()
+  groupContextMenuGroupId.value = groupId
+  groupContextMenuPosition.value = {
+    x: event.clientX,
+    y: event.clientY
+  }
+  groupContextMenuVisible.value = true
+
+  // Close tab context menu if open
+  contextMenuVisible.value = false
+
+  // Close menu when clicking outside
+  const closeMenu = () => {
+    groupContextMenuVisible.value = false
+    document.removeEventListener('click', closeMenu)
+  }
+  setTimeout(() => {
+    document.addEventListener('click', closeMenu)
+  }, 0)
+}
+
+const handleOpenTabInNewWindow = () => {
+  if (contextMenuTabId.value) {
+    openTabInNewWindow(contextMenuTabId.value)
+  }
+  contextMenuVisible.value = false
+}
+
+const handleOpenGroupInNewWindow = () => {
+  if (groupContextMenuGroupId.value) {
+    openGroupInNewWindow(groupContextMenuGroupId.value)
+  }
+  groupContextMenuVisible.value = false
+}
+
+const handleGroupContextMenuRenameGroup = () => {
+  if (!groupContextMenuGroupId.value) return
+
+  const groupName = getGroupName(groupContextMenuGroupId.value)
+
+  const newName = window.prompt(`Rename group "${groupName}":`, groupName)
+  if (newName && newName.trim() !== '') {
+    renameGroup(groupContextMenuGroupId.value, newName.trim())
+  }
+
+  groupContextMenuVisible.value = false
+}
+
+const handleGroupContextMenuDissolveGroup = () => {
+  if (!groupContextMenuGroupId.value) return
+
+  const groupName = getGroupName(groupContextMenuGroupId.value)
+  const groupTabs = Array.from(tabs.value.values()).filter(t => t.groupId === groupContextMenuGroupId.value)
+
+  const confirmDissolve = window.confirm(`Dissolve group "${groupName}"? All ${groupTabs.length} tabs will be ungrouped.`)
+  if (confirmDissolve) {
+    dissolveGroup(groupContextMenuGroupId.value)
+    console.log(`✅ Dissolved group "${groupName}"`)
+  }
+
+  groupContextMenuVisible.value = false
 }
 
 // Expose template refs for parent component to scroll

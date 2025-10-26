@@ -883,6 +883,61 @@ async fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(
     Ok(())
 }
 
+#[tauri::command]
+async fn launch_new_instance(session_data: SessionData) -> Result<(), String> {
+    use std::process::Command;
+
+    // Get the path to the current executable
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("Failed to get current executable path: {}", e))?;
+
+    // Write session data to the derivative session file
+    let derivative_session_path = PathBuf::from("/tmp/image-viewer-derivative-session.session.json");
+
+    // Serialize session data to JSON
+    let json_data = serde_json::to_string_pretty(&session_data)
+        .map_err(|e| format!("Failed to serialize session data: {}", e))?;
+
+    // Write to file
+    fs::write(&derivative_session_path, json_data)
+        .map_err(|e| format!("Failed to write derivative session file: {}", e))?;
+
+    println!("Derivative session saved to: {}", derivative_session_path.display());
+
+    // Spawn new instance of the application
+    Command::new(current_exe)
+        .spawn()
+        .map_err(|e| format!("Failed to spawn new instance: {}", e))?;
+
+    println!("New instance launched");
+    Ok(())
+}
+
+#[tauri::command]
+async fn load_derivative_session() -> Result<Option<SessionData>, String> {
+    let derivative_session_path = PathBuf::from("/tmp/image-viewer-derivative-session.session.json");
+
+    // Check if the derivative session file exists
+    if !derivative_session_path.exists() {
+        return Ok(None);
+    }
+
+    // Read the file
+    let json_data = fs::read_to_string(&derivative_session_path)
+        .map_err(|e| format!("Failed to read derivative session file: {}", e))?;
+
+    // Deserialize JSON data
+    let session_data: SessionData = serde_json::from_str(&json_data)
+        .map_err(|e| format!("Failed to parse derivative session data: {}", e))?;
+
+    // Delete the file immediately after successful load
+    fs::remove_file(&derivative_session_path)
+        .map_err(|e| format!("Failed to delete derivative session file: {}", e))?;
+
+    println!("Derivative session loaded and deleted from: {}", derivative_session_path.display());
+    Ok(Some(session_data))
+}
+
 // Helper function to build the Recent Sessions submenu
 fn build_recent_sessions_submenu(app: &tauri::AppHandle, recent_sessions: &[String]) -> Result<tauri::menu::Submenu<tauri::Wry>, tauri::Error> {
     use tauri::menu::SubmenuBuilder;
@@ -1039,7 +1094,9 @@ pub fn run() {
             clear_loaded_session,
             update_session_file,
             set_window_title,
-            exit_app
+            exit_app,
+            launch_new_instance,
+            load_derivative_session
         ])
         .setup(|app| {
             // --- Build the application menu ---

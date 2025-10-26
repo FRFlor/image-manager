@@ -880,6 +880,105 @@ export function useTabControls() {
     console.log(`Tree ${treeCollapsed.value ? 'collapsed' : 'expanded'}`)
   }
 
+  // Open tab in new window
+  const openTabInNewWindow = async (tabId: string) => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const tab = tabs.value.get(tabId)
+    if (!tab) {
+      console.error('Tab not found:', tabId)
+      return
+    }
+
+    const folderContext = tabFolderContexts.value.get(tabId)
+    if (!folderContext) {
+      console.error('Folder context not found for tab:', tabId)
+      return
+    }
+
+    // Create a minimal session with just this tab
+    const sessionData = {
+      name: null,
+      tabs: [{
+        id: tab.id,
+        imagePath: tab.imageData.path,
+        order: 0,
+        groupId: null,
+        zoomLevel: tab.zoomLevel,
+        fitMode: tab.fitMode,
+        panOffset: tab.panOffset
+      }],
+      groups: null,
+      activeTabId: tab.id,
+      createdAt: new Date().toISOString(),
+      layoutPosition: layoutPosition.value,
+      layoutSize: layoutSize.value,
+      treeCollapsed: treeCollapsed.value
+    }
+
+    try {
+      await invoke('launch_new_instance', { sessionData })
+      console.log('Launched new instance with tab:', tab.title)
+    } catch (error) {
+      console.error('Failed to launch new instance:', error)
+    }
+  }
+
+  // Open group in new window
+  const openGroupInNewWindow = async (groupId: string) => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const group = tabGroups.value.get(groupId)
+    if (!group) {
+      console.error('Group not found:', groupId)
+      return
+    }
+
+    // Get all tabs in this group
+    const groupTabs = Array.from(tabs.value.values())
+      .filter(tab => tab.groupId === groupId)
+      .sort((a, b) => a.order - b.order)
+
+    if (groupTabs.length === 0) {
+      console.error('No tabs found in group:', groupId)
+      return
+    }
+
+    // Create session with all tabs in the group
+    const sessionTabs = groupTabs.map((tab, index) => ({
+      id: tab.id,
+      imagePath: tab.imageData.path,
+      order: index,
+      groupId: 'group-0', // Recreate the group in new instance
+      zoomLevel: tab.zoomLevel,
+      fitMode: tab.fitMode,
+      panOffset: tab.panOffset
+    }))
+
+    const sessionData = {
+      name: null,
+      tabs: sessionTabs,
+      groups: [{
+        id: 'group-0',
+        name: group.name,
+        color: group.color,
+        order: 0,
+        tabIds: sessionTabs.map(t => t.id),
+        collapsed: false
+      }],
+      activeTabId: groupTabs[0]!.id, // Safe because we checked groupTabs.length === 0 earlier
+      createdAt: new Date().toISOString(),
+      layoutPosition: layoutPosition.value,
+      layoutSize: layoutSize.value,
+      treeCollapsed: treeCollapsed.value
+    }
+
+    try {
+      await invoke('launch_new_instance', { sessionData })
+      console.log('Launched new instance with group:', group.name)
+    } catch (error) {
+      console.error('Failed to launch new instance:', error)
+    }
+  }
+
 
 
   return {
@@ -946,6 +1045,10 @@ export function useTabControls() {
     contextMenuCreateGroupWithNext,
     contextMenuRenameGroup,
     contextMenuRemoveFromGroup,
-    contextMenuDissolveGroup
+    contextMenuDissolveGroup,
+
+    // Window management
+    openTabInNewWindow,
+    openGroupInNewWindow
   }
 }
