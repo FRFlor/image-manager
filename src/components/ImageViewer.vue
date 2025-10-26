@@ -1399,6 +1399,54 @@ const loadSessionDialog = async () => {
   }
 }
 
+// State to track current session for reload/update
+const currentSessionPath = ref<string | null>(null)
+const currentSessionName = ref<string | null>(null)
+
+const reloadCurrentSession = async () => {
+  console.log('reloadCurrentSession called')
+  if (!currentSessionPath.value) {
+    console.log('No current session to reload')
+    return false
+  }
+
+  try {
+    const sessionData = await invoke<any>('load_session_from_path', { path: currentSessionPath.value })
+    if (sessionData) {
+      await restoreFromSession(sessionData)
+      console.log('Session reloaded successfully')
+      return true
+    }
+    return false
+  } catch (error) {
+    console.error('Failed to reload session:', error)
+    return false
+  }
+}
+
+const updateCurrentSession = async () => {
+  console.log('updateCurrentSession called')
+  if (!currentSessionPath.value || !currentSessionName.value) {
+    console.log('No current session to update')
+    return false
+  }
+
+  try {
+    const sessionData = createSessionData()
+    sessionData.name = currentSessionName.value
+
+    // Save directly to the current session file
+    const { writeTextFile } = await import('@tauri-apps/plugin-fs')
+    await writeTextFile(currentSessionPath.value, JSON.stringify(sessionData, null, 2))
+
+    console.log('Session updated successfully at:', currentSessionPath.value)
+    return true
+  } catch (error) {
+    console.error('Failed to update session:', error)
+    return false
+  }
+}
+
 // Expose methods for parent component
 defineExpose({
   openImage,
@@ -1407,7 +1455,9 @@ defineExpose({
   saveSessionDialog,
   loadSessionDialog,
   createSessionData,
-  restoreFromSession
+  restoreFromSession,
+  reloadCurrentSession,
+  updateCurrentSession
 })
 </script>
 

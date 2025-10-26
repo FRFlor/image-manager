@@ -109,6 +109,26 @@ onMounted(async () => {
         }
       })
 
+      // Listen for menu reload session event
+      await listen('menu-reload-session', async () => {
+        console.log('Menu reload session requested')
+        try {
+          await imageViewer.value?.reloadCurrentSession()
+        } catch (error) {
+          console.error('Failed to reload session from menu:', error)
+        }
+      })
+
+      // Listen for menu update session event
+      await listen('menu-update-session', async () => {
+        console.log('Menu update session requested')
+        try {
+          await imageViewer.value?.updateCurrentSession()
+        } catch (error) {
+          console.error('Failed to update session from menu:', error)
+        }
+      })
+
       // Listen for menu load recent session event
       await listen<string>('menu-load-recent-session', async (event) => {
         console.log('Menu load recent session requested:', event.payload)
@@ -117,6 +137,18 @@ onMounted(async () => {
           const sessionData = await invoke<any>('load_session_from_path', { path: sessionPath })
           if (sessionData && imageViewer.value) {
             await imageViewer.value.restoreFromSession(sessionData)
+
+            // Set the current session path and name in the ImageViewer component
+            // Extract session name from path
+            const pathParts = sessionPath.split(/[\\/]/)
+            const fileName = pathParts[pathParts.length - 1]
+            const sessionName = fileName.replace('.session.json', '')
+
+            // Update session tracking in the component
+            if (imageViewer.value) {
+              (imageViewer.value as any).currentSessionPath = sessionPath;
+              (imageViewer.value as any).currentSessionName = sessionName
+            }
           }
         } catch (error) {
           console.error('Failed to load recent session from menu:', error)

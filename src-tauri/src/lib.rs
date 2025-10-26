@@ -15,11 +15,19 @@ use std::sync::{Arc, Mutex};
 mod metadata_cache;
 use metadata_cache::MetadataCache;
 
+// Struct to track currently loaded session information
+#[derive(Debug, Clone)]
+struct LoadedSessionInfo {
+    name: String,
+    path: String,
+}
+
 // Application state to track if we're in the process of exiting
 struct AppState {
     is_exiting: Arc<Mutex<bool>>,
     metadata_cache: Arc<MetadataCache>,
     recent_sessions: Arc<Mutex<Vec<String>>>, // Stores paths to recent manual sessions
+    loaded_session: Arc<Mutex<Option<LoadedSessionInfo>>>, // Currently loaded session
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -457,9 +465,21 @@ async fn save_session_dialog(app_handle: tauri::AppHandle, session_data: Session
             add_recent_session(&state.recent_sessions, &path_str)?;
             save_recent_sessions(&state.recent_sessions)?;
 
-            // Update the menu to reflect the new recent sessions list
+            // Set this as the currently loaded session
+            let path_obj = Path::new(&path_str);
+            let session_name = path_obj.file_stem()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            *state.loaded_session.lock().unwrap() = Some(LoadedSessionInfo {
+                name: session_name,
+                path: path_str.clone(),
+            });
+
+            // Update the menu to reflect the new recent sessions list and loaded session
             let recent_sessions = state.recent_sessions.lock().unwrap().clone();
-            if let Err(e) = update_recent_sessions_menu(&app_handle, &recent_sessions) {
+            let loaded_session = state.loaded_session.lock().unwrap().clone();
+            if let Err(e) = update_full_menu(&app_handle, &recent_sessions, &loaded_session) {
                 eprintln!("Warning: Failed to update menu: {}", e);
             }
 
@@ -693,9 +713,20 @@ async fn load_session_from_path(app: tauri::AppHandle, path: String, state: Stat
     add_recent_session(&state.recent_sessions, &path)?;
     save_recent_sessions(&state.recent_sessions)?;
 
-    // Update the menu to reflect the new recent sessions list
+    // Set this as the currently loaded session
+    let session_name = path_obj.file_stem()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+    *state.loaded_session.lock().unwrap() = Some(LoadedSessionInfo {
+        name: session_name,
+        path: path.clone(),
+    });
+
+    // Update the menu to reflect the new recent sessions list and loaded session
     let recent_sessions = state.recent_sessions.lock().unwrap().clone();
-    if let Err(e) = update_recent_sessions_menu(&app, &recent_sessions) {
+    let loaded_session = state.loaded_session.lock().unwrap().clone();
+    if let Err(e) = update_full_menu(&app, &recent_sessions, &loaded_session) {
         eprintln!("Warning: Failed to update menu: {}", e);
     }
 
@@ -704,10 +735,38 @@ async fn load_session_from_path(app: tauri::AppHandle, path: String, state: Stat
 }
 
 #[tauri::command]
-async fn refresh_recent_sessions_menu(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+async fn refresh_menu(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let recent_sessions = state.recent_sessions.lock().unwrap().clone();
-    update_recent_sessions_menu(&app, &recent_sessions)?;
-    println!("Menu updated with {} recent sessions", recent_sessions.len());
+    let loaded_session = state.loaded_session.lock().unwrap().clone();
+    update_full_menu(&app, &recent_sessions, &loaded_session)?;
+    println!("Menu updated");
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_loaded_session(app: tauri::AppHandle, name: String, path: String, state: State<'_, AppState>) -> Result<(), String> {
+    let session_info = LoadedSessionInfo { name, path };
+    *state.loaded_session.lock().unwrap() = Some(session_info);
+
+    // Update menu to show the loaded session
+    let recent_sessions = state.recent_sessions.lock().unwrap().clone();
+    let loaded_session = state.loaded_session.lock().unwrap().clone();
+    update_full_menu(&app, &recent_sessions, &loaded_session)?;
+
+    println!("Loaded session menu updated");
+    Ok(())
+}
+
+#[tauri::command]
+async fn clear_loaded_session(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    *state.loaded_session.lock().unwrap() = None;
+
+    // Update menu to remove the loaded session
+    let recent_sessions = state.recent_sessions.lock().unwrap().clone();
+    let loaded_session = state.loaded_session.lock().unwrap().clone();
+    update_full_menu(&app, &recent_sessions, &loaded_session)?;
+
+    println!("Loaded session cleared from menu");
     Ok(())
 }
 
@@ -768,8 +827,24 @@ fn build_recent_sessions_submenu(app: &tauri::AppHandle, recent_sessions: &[Stri
     recent_menu_builder.build()
 }
 
-// Update the recent sessions submenu in the application menu
-fn update_recent_sessions_menu(app: &tauri::AppHandle, recent_sessions: &[String]) -> Result<(), String> {
+// Helper function to build the Loaded Session submenu (if a session is loaded)
+fn build_loaded_session_menu(app: &tauri::AppHandle, loaded_session: &Option<LoadedSessionInfo>) -> Result<Option<tauri::menu::Submenu<tauri::Wry>>, tauri::Error> {
+    use tauri::menu::SubmenuBuilder;
+
+    if let Some(session_info) = loaded_session {
+        let menu_title = format!("Loaded Session: {}", session_info.name);
+        let loaded_menu = SubmenuBuilder::new(app, menu_title)
+            .text("reload_session", "Reload")
+            .text("update_session", "Update")
+            .build()?;
+        Ok(Some(loaded_menu))
+    } else {
+        Ok(None)
+    }
+}
+
+// Update the menu with current recent sessions and loaded session
+fn update_full_menu(app: &tauri::AppHandle, recent_sessions: &[String], loaded_session: &Option<LoadedSessionInfo>) -> Result<(), String> {
     use tauri::menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem};
 
     // Build the new recent sessions submenu
@@ -792,9 +867,19 @@ fn update_recent_sessions_menu(app: &tauri::AppHandle, recent_sessions: &[String
         .build()
         .map_err(|e| format!("Failed to build View menu: {}", e))?;
 
-    let app_menu = MenuBuilder::new(app)
-        .items(&[&file_menu, &view_menu])
-        .build()
+    // Build menu bar with File, View, and optionally Loaded Session
+    let mut menu_builder = MenuBuilder::new(app);
+    menu_builder = menu_builder.item(&file_menu);
+
+    // Add loaded session menu if a session is loaded
+    if let Some(loaded_menu) = build_loaded_session_menu(app, loaded_session)
+        .map_err(|e| format!("Failed to build loaded session menu: {}", e))? {
+        menu_builder = menu_builder.item(&loaded_menu);
+    }
+
+    menu_builder = menu_builder.item(&view_menu);
+
+    let app_menu = menu_builder.build()
         .map_err(|e| format!("Failed to build menu: {}", e))?;
 
     app.set_menu(app_menu)
@@ -831,6 +916,7 @@ pub fn run() {
         is_exiting: Arc::new(Mutex::new(false)),
         metadata_cache,
         recent_sessions: Arc::new(Mutex::new(recent_sessions)),
+        loaded_session: Arc::new(Mutex::new(None)), // No session loaded initially
     };
 
     tauri::Builder::default()
@@ -851,7 +937,9 @@ pub fn run() {
             load_auto_session,
             get_recent_sessions,
             load_session_from_path,
-            refresh_recent_sessions_menu,
+            refresh_menu,
+            set_loaded_session,
+            clear_loaded_session,
             exit_app
         ])
         .setup(|app| {
@@ -903,6 +991,12 @@ pub fn run() {
                     }
                     "toggle_controls" => {
                         let _ = app_handle.emit("menu-toggle-controls", ());
+                    }
+                    "reload_session" => {
+                        let _ = app_handle.emit("menu-reload-session", ());
+                    }
+                    "update_session" => {
+                        let _ = app_handle.emit("menu-update-session", ());
                     }
                     id if id.starts_with("load_recent_path_") => {
                         // Extract and decode the path from menu ID
