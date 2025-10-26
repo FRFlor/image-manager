@@ -855,6 +855,7 @@ fn build_loaded_session_menu(app: &tauri::AppHandle, loaded_session: &Option<Loa
 
     if let Some(session_info) = loaded_session {
         // Use just the session name as the menu title (without "Loaded Session:" prefix)
+        println!("Building loaded session menu with name: '{}' (length: {})", session_info.name, session_info.name.len());
         let loaded_menu = SubmenuBuilder::new(app, &session_info.name)
             .text("reload_session", "Reload")
             .text("update_session", "Update")
