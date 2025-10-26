@@ -186,12 +186,8 @@ const {
 const { areZoomAndNavigationControlsVisible } = useUIConfigurations()
 
 const {
-  currentSessionPath,
-  currentSessionName,
   saveSession,
-  loadSession,
-  reloadCurrentSession,
-  updateCurrentSession
+  loadSession
 } = useSessionManager()
 
 // Reactive state
@@ -1057,7 +1053,7 @@ const keyboardActions: KeyboardActions = {
   resetZoom,
   toggleFitMode,
   panImageBy,
-  saveAutoSession: () => saveAutoSession()
+  saveAutoSession: () => saveSession('auto')
 }
 
 const { setShortcutContext, resetShortcutContext, handleKeyDown } = useShortcutContext(
@@ -1098,6 +1094,7 @@ onUnmounted(() => {
 })
 
 // Session management methods (now using useSessionManager composable)
+// Note: saveAutoSession removed - App.vue now calls saveSession('auto') directly from composable
 
 const restoreFromSession = async (sessionData: SessionData) => {
   try {
@@ -1299,10 +1296,6 @@ const restoreFromSession = async (sessionData: SessionData) => {
   }
 }
 
-const saveAutoSession = async () => {
-  await saveSession('auto')
-}
-
 const loadAutoSession = async () => {
   const result = await loadSession('auto')
   if (result) {
@@ -1329,15 +1322,10 @@ const loadSessionDialog = async () => {
 // Expose methods and refs for parent component
 defineExpose({
   openImage,
-  saveAutoSession,
   loadAutoSession,
   saveSessionDialog,
   loadSessionDialog,
-  restoreFromSession,
-  reloadCurrentSession,
-  updateCurrentSession,
-  currentSessionPath,
-  currentSessionName
+  restoreFromSession
 })
 </script>
 

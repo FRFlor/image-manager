@@ -8,7 +8,7 @@ import { useUIConfigurations } from './composables/useUIConfigurations'
 import { useSessionManager } from './composables/useSessionManager'
 
 const { toggleControlsVisibility } = useUIConfigurations()
-const { saveSession, loadSession } = useSessionManager()
+const { saveSession, loadSession, reloadCurrentSession, updateCurrentSession } = useSessionManager()
 
 // Application state
 const appState = ref<ApplicationState>({
@@ -115,7 +115,10 @@ onMounted(async () => {
       await listen('menu-reload-session', async () => {
         console.log('Menu reload session requested')
         try {
-          await imageViewer.value?.reloadCurrentSession()
+          const sessionData = await reloadCurrentSession()
+          if (sessionData && imageViewer.value) {
+            await imageViewer.value.restoreFromSession(sessionData)
+          }
         } catch (error) {
           console.error('Failed to reload session from menu:', error)
         }
@@ -125,7 +128,7 @@ onMounted(async () => {
       await listen('menu-update-session', async () => {
         console.log('Menu update session requested')
         try {
-          await imageViewer.value?.updateCurrentSession()
+          await updateCurrentSession()
         } catch (error) {
           console.error('Failed to update session from menu:', error)
         }
