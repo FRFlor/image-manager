@@ -478,9 +478,15 @@ async fn save_session_dialog(app_handle: tauri::AppHandle, session_data: Session
                 .unwrap_or("Unknown")
                 .to_string();
             *state.loaded_session.lock().unwrap() = Some(LoadedSessionInfo {
-                name: session_name,
+                name: session_name.clone(),
                 path: path_str.clone(),
             });
+
+            // Update window title to show loaded session
+            let window_title = format!("Image Viewer: {}", session_name);
+            if let Err(e) = set_window_title(app_handle.clone(), window_title).await {
+                eprintln!("Warning: Failed to update window title: {}", e);
+            }
 
             // Update the menu to reflect the new recent sessions list and loaded session
             let recent_sessions = state.recent_sessions.lock().unwrap().clone();
@@ -725,9 +731,13 @@ async fn load_session_from_path(app: tauri::AppHandle, path: String, state: Stat
         .unwrap_or("Unknown")
         .to_string();
     *state.loaded_session.lock().unwrap() = Some(LoadedSessionInfo {
-        name: session_name,
+        name: session_name.clone(),
         path: path.clone(),
     });
+
+    // Update window title to show loaded session
+    let window_title = format!("Image Viewer: {}", session_name);
+    set_window_title(app.clone(), window_title).await?;
 
     // Update the menu to reflect the new recent sessions list and loaded session
     let recent_sessions = state.recent_sessions.lock().unwrap().clone();
@@ -751,8 +761,12 @@ async fn refresh_menu(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
 
 #[tauri::command]
 async fn set_loaded_session(app: tauri::AppHandle, name: String, path: String, state: State<'_, AppState>) -> Result<(), String> {
-    let session_info = LoadedSessionInfo { name, path };
+    let session_info = LoadedSessionInfo { name: name.clone(), path };
     *state.loaded_session.lock().unwrap() = Some(session_info);
+
+    // Update window title to show loaded session
+    let window_title = format!("Image Viewer: {}", name);
+    set_window_title(app.clone(), window_title).await?;
 
     // Update menu to show the loaded session
     let recent_sessions = state.recent_sessions.lock().unwrap().clone();
@@ -766,6 +780,9 @@ async fn set_loaded_session(app: tauri::AppHandle, name: String, path: String, s
 #[tauri::command]
 async fn clear_loaded_session(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     *state.loaded_session.lock().unwrap() = None;
+
+    // Reset window title to default
+    set_window_title(app.clone(), "Image Viewer".to_string()).await?;
 
     // Update menu to remove the loaded session
     let recent_sessions = state.recent_sessions.lock().unwrap().clone();
@@ -789,6 +806,16 @@ async fn update_session_file(path: String, session_data: SessionData) -> Result<
         .map_err(|e| format!("Failed to write session file: {}", e))?;
 
     println!("Session file updated at: {}", path);
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_window_title(app: tauri::AppHandle, title: String) -> Result<(), String> {
+    // Get the main window and set its title
+    for (_, window) in app.webview_windows() {
+        window.set_title(&title)
+            .map_err(|e| format!("Failed to set window title: {}", e))?;
+    }
     Ok(())
 }
 
@@ -854,9 +881,17 @@ fn build_loaded_session_menu(app: &tauri::AppHandle, loaded_session: &Option<Loa
     use tauri::menu::SubmenuBuilder;
 
     if let Some(session_info) = loaded_session {
-        // Use just the session name as the menu title (without "Loaded Session:" prefix)
+        // Platform-specific menu title:
+        // - Windows: Use generic "Session" (due to 10-character truncation bug)
+        // - macOS: Use full session name (works correctly)
+        #[cfg(target_os = "windows")]
+        let menu_title = "Session";
+
+        #[cfg(not(target_os = "windows"))]
+        let menu_title = session_info.name.as_str();
+
         println!("Building loaded session menu with name: '{}' (length: {})", session_info.name, session_info.name.len());
-        let loaded_menu = SubmenuBuilder::new(app, &session_info.name)
+        let loaded_menu = SubmenuBuilder::new(app, menu_title)
             .text("reload_session", "Reload")
             .text("update_session", "Update")
             .build()?;
@@ -964,6 +999,7 @@ pub fn run() {
             set_loaded_session,
             clear_loaded_session,
             update_session_file,
+            set_window_title,
             exit_app
         ])
         .setup(|app| {
