@@ -10,7 +10,7 @@ const context = ref<ShortcutContext>('default')
 const lastKeyPressTime = ref(0)
 const KEY_REPEAT_THRESHOLD = 50 // ms - minimum time between key presses
 const KEYBOARD_PAN_STEP: number = 40
-const KEYBOARD_SHORTCUT_THROTTLE = 200 // ms - minimum time between shortcut handling
+const KEYBOARD_SHORTCUT_THROTTLE = 100 // ms - minimum time between shortcut handling
 const lastShortcutHandleTime = ref(0)
 
 export interface KeyboardActions {
