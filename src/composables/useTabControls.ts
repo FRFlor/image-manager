@@ -43,6 +43,15 @@ if (!tabGroups.value.has(FAVOURITES_GROUP_ID)) {
 }
 
 export function useTabControls() {
+  const shouldGroupBeCollapsed = function(groupId?: string) {
+      if (! groupId) {
+          return false;
+      }
+      // Groups that have the activeTab should auto-expand
+      let userSetThisGroupAsCollapsed = tabGroups.value.get(groupId)?.collapsed
+      let currentActiveTabOutsideOfThisGroup = activeTab.value?.groupId !== groupId
+      return userSetThisGroupAsCollapsed && currentActiveTabOutsideOfThisGroup
+  }
 
   // Computed properties
   const sortedTabs = computed(() => {
@@ -88,9 +97,8 @@ export function useTabControls() {
         processedGroups.add(tab.groupId)
       }
       // Add the tab only if its group is not collapsed (or if it has no group)
-      const group = tab.groupId ? tabGroups.value.get(tab.groupId) : null
-      if (!tab.groupId || !group?.collapsed) {
-        items.push({ type: 'tab', tab })
+      if (!tab.groupId || !shouldGroupBeCollapsed(tab.groupId)) {
+          items.push({ type: 'tab', tab })
       }
     }
 
@@ -1325,6 +1333,7 @@ export function useTabControls() {
     joinWithLeft,
     joinWithRight,
     setNextGroupColorIndex,
+    shouldGroupBeCollapsed,
 
     // Favourites management
     isImageFavourited,

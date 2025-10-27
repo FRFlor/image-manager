@@ -21,8 +21,7 @@
       <div class="tree-items" ref="treeItemsContainer">
         <template v-for="item in treeViewItems" :key="item.type === 'group' ? `group-${item.groupId}` : `tab-${item.tab!.id}`">
           <!-- Group Header -->
-          <header
-            v-if="item.type === 'group'"
+          <header v-if="item.type === 'group'"
             @click="selectGroupHeader(item.groupId!)"
             @contextmenu.prevent="showGroupContextMenu($event, item.groupId!)"
             class="tree-group-header"
@@ -31,17 +30,16 @@
               'group-blue': getGroupColor(item.groupId!) === 'blue',
               'group-orange': getGroupColor(item.groupId!) === 'orange',
               'group-gold': getGroupColor(item.groupId!) === 'gold',
-              collapsed: tabGroups.get(item.groupId!)?.collapsed === true
+              collapsed: shouldGroupBeCollapsed(item.groupId)
             }">
-            <button @click.stop="toggleGroupCollapse(item.groupId!)" class="group-collapse-btn" :title="tabGroups.get(item.groupId!)?.collapsed ? 'Expand group' : 'Collapse group'">
-              <span v-if="tabGroups.get(item.groupId!)?.collapsed">▶</span>
+            <button @click.stop="toggleGroupCollapse(item.groupId!)" class="group-collapse-btn" :title="shouldGroupBeCollapsed(item.groupId) ? 'Expand group' : 'Collapse group'">
+              <span v-if="shouldGroupBeCollapsed(item.groupId)">▶</span>
               <span v-else>▼</span>
             </button>
             <span v-if="!treeCollapsed" class="group-header-title">{{ getGroupName(item.groupId!) }}</span>
           </header>
           <!-- Tab Item -->
-          <div
-            v-else
+          <div v-else-if="!shouldGroupBeCollapsed(item.tab!.groupId)"
             @click="handleTreeTabClick($event, item.tab!.id)"
             @contextmenu.prevent="showTabContextMenu($event, item.tab!.id)"
             class="tree-item"
@@ -195,6 +193,7 @@ const {
   closeTabsToLeft,
   contextMenuCreateGroupWithNext,
   contextMenuCanCreateGroupFromSelection,
+  shouldGroupBeCollapsed,
   contextMenuRenameGroup: contextMenuRenameGroupBase,
   contextMenuRemoveFromGroup: contextMenuRemoveFromGroupBase,
   renameGroup,
