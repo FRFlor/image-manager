@@ -108,13 +108,13 @@
 
         <div v-if="duplicateTabs.length > 0" class="duplicate-tabs-notice mini">
           <button
-              v-for="(dup, index) in duplicateTabs"
+              v-for="dup in duplicateTabs"
               :key="dup.tabId"
               @click="switchToTab(dup.tabId)"
               class="duplicate-link"
               :title="dup.groupName ? `${dup.tabTitle} (${dup.groupName})` : dup.tabTitle"
           >
-            {{ index + 1 }}
+            {{ dup.groupName === 'Favourites' ? '⭐' : '🔘' }}
           </button>
         </div>
       </div>
