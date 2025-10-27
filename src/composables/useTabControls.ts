@@ -30,19 +30,19 @@ const layoutPosition = ref<'invisible' | 'top' | 'tree'>('tree')
 const layoutSize = ref<'small' | 'large'>('small')
 const treeCollapsed = ref(false)
 
+// Initialize Favourites group at module level
+if (!tabGroups.value.has(FAVOURITES_GROUP_ID)) {
+  const favouritesGroup: TabGroup = {
+    id: FAVOURITES_GROUP_ID,
+    name: 'Favourites',
+    color: 'gold',
+    order: -1, // Ensures it's always first
+    collapsed: false
+  }
+  tabGroups.value.set(FAVOURITES_GROUP_ID, favouritesGroup)
+}
 
 export function useTabControls() {
-  // Initialize Favourites group if it doesn't exist
-  if (!tabGroups.value.has(FAVOURITES_GROUP_ID)) {
-    const favouritesGroup: TabGroup = {
-      id: FAVOURITES_GROUP_ID,
-      name: 'Favourites',
-      color: 'gold',
-      order: -1, // Ensures it's always first
-      collapsed: false
-    }
-    tabGroups.value.set(FAVOURITES_GROUP_ID, favouritesGroup)
-  }
 
   // Computed properties
   const sortedTabs = computed(() => {
@@ -74,6 +74,12 @@ export function useTabControls() {
   const treeViewItems = computed((): TreeViewItem[] => {
     const items: TreeViewItem[] = []
     const processedGroups = new Set<string>()
+
+    // Always add Favourites group header first, even if empty
+    if (tabGroups.value.has(FAVOURITES_GROUP_ID)) {
+      items.push({ type: 'group', groupId: FAVOURITES_GROUP_ID })
+      processedGroups.add(FAVOURITES_GROUP_ID)
+    }
 
     for (const tab of sortedTabs.value) {
       // If tab has a group and we haven't processed it yet, add group header
@@ -1067,6 +1073,16 @@ export function useTabControls() {
     tabGroups.value.clear()
     activeTabId.value = null
     selectedGroupId.value = null
+
+    // Re-initialize Favourites group after clearing
+    const favouritesGroup: TabGroup = {
+      id: FAVOURITES_GROUP_ID,
+      name: 'Favourites',
+      color: 'gold',
+      order: -1,
+      collapsed: false
+    }
+    tabGroups.value.set(FAVOURITES_GROUP_ID, favouritesGroup)
   }
 
   // Set next group color index (for session restore)

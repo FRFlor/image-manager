@@ -30,6 +30,7 @@
               active: selectedGroupId === item.groupId,
               'group-blue': getGroupColor(item.groupId!) === 'blue',
               'group-orange': getGroupColor(item.groupId!) === 'orange',
+              'group-gold': getGroupColor(item.groupId!) === 'gold',
               collapsed: tabGroups.get(item.groupId!)?.collapsed === true
             }">
             <button @click.stop="toggleGroupCollapse(item.groupId!)" class="group-collapse-btn" :title="tabGroups.get(item.groupId!)?.collapsed ? 'Expand group' : 'Collapse group'">
@@ -72,7 +73,8 @@
             active: tab.id === activeTabId,
             selected: isTabSelected(tab.id),
             'group-blue': tab.groupId && getGroupColor(tab.groupId) === 'blue',
-            'group-orange': tab.groupId && getGroupColor(tab.groupId) === 'orange'
+            'group-orange': tab.groupId && getGroupColor(tab.groupId) === 'orange',
+            'group-gold': tab.groupId && getGroupColor(tab.groupId) === 'gold'
           }">
           <img v-if="tab.imageData.assetUrl" :src="tab.imageData.assetUrl" :alt="tab.title" class="tab-thumbnail" />
           <span class="tab-title">{{ tab.title }}</span>
