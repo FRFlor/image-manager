@@ -44,6 +44,10 @@
           :alt="image.name"
           class="grid-thumbnail"
           @error="handleImageError" />
+        <!-- Favourite Star Indicator -->
+        <div v-if="isImageInFavourites(image.path)" class="favourite-star-indicator">
+          ⭐
+        </div>
         <div class="grid-item-name">{{ image.name }}</div>
       </div>
     </div>
@@ -51,8 +55,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { ImageData } from '../types'
+import { useTabControls } from '../composables/useTabControls'
 
 // Props
 const props = defineProps<{
@@ -67,6 +72,9 @@ const emit = defineEmits<{
   nameChanged: [newName: string]
   imageReordered: [direction: 'left' | 'right', tabId: string]
 }>()
+
+// Get favourites functions from composable
+const { isImageFavourited, toggleFavourite, tabs } = useTabControls()
 
 // State
 const selectedImageId = ref<string | null>(null)
@@ -102,6 +110,57 @@ const handleImageError = (event: Event) => {
   const img = event.target as HTMLImageElement
   img.style.display = 'none'
 }
+
+// Check if an image is favourited
+const isImageInFavourites = (imagePath: string): boolean => {
+  return isImageFavourited(imagePath)
+}
+
+// Handle keyboard shortcuts
+const handleKeyDown = (event: KeyboardEvent) => {
+  // Don't handle keyboard shortcuts when typing in input
+  if (event.target instanceof HTMLInputElement) {
+    return
+  }
+
+  // Ctrl+F / Cmd+F to toggle favourite for selected image
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+    event.preventDefault()
+
+    if (selectedImageId.value) {
+      // Find the corresponding tab ID for the selected image
+      const selectedIndex = props.images.findIndex(img => img.id === selectedImageId.value)
+      const tabId = props.tabIds[selectedIndex]
+
+      if (tabId) {
+        // Temporarily set this tab as active to favourite it
+        const tab = tabs.value.get(tabId)
+        if (tab) {
+          // Store the original active tab (if we want to switch back)
+          // But for now, just call toggleFavourite which uses the active tab
+          // We need to emit this back to parent to switch tab temporarily
+
+          // Actually, we need to switch to this tab first
+          emit('imageSelected', selectedImageId.value)
+
+          // Then toggle favourite in next tick
+          setTimeout(() => {
+            toggleFavourite()
+          }, 50)
+        }
+      }
+    }
+  }
+}
+
+// Lifecycle
+onMounted(() => {
+  document.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyDown)
+})
 </script>
 
 <style scoped>
@@ -250,6 +309,18 @@ const handleImageError = (event: Event) => {
 
 .grid-item:hover .grid-item-name {
   opacity: 1;
+}
+
+/* Favourite Star Indicator */
+.favourite-star-indicator {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 20px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0.95;
 }
 
 /* Scrollbar styling */
