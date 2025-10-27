@@ -36,6 +36,11 @@ export function useTabControls() {
     return tabs.value.get(activeTabId.value) || null
   })
 
+  const currentLayout = computed(() => {
+    if (layoutPosition.value === 'invisible') return 'invisible'
+    return `${layoutPosition.value}-${layoutSize.value}` as 'top-small' | 'top-large' | 'tree-small' | 'tree-large'
+  })
+
   // Tree view items with group headers
   type TreeViewItem = { type: 'group', groupId: string } | { type: 'tab', tab: TabData }
   const treeViewItems = computed((): TreeViewItem[] => {
@@ -878,6 +883,37 @@ export function useTabControls() {
     console.log(`Tree ${treeCollapsed.value ? 'collapsed' : 'expanded'}`)
   }
 
+  // Helper to create session data for new window
+  const createNewWindowSessionData = (tabsToInclude: TabData[], groupToInclude?: TabGroup) => {
+    const sessionTabs = tabsToInclude.map((tab, index) => ({
+      id: tab.id,
+      imagePath: tab.imageData.path,
+      order: index,
+      groupId: groupToInclude ? 'group-0' : null,
+      zoomLevel: tab.zoomLevel,
+      fitMode: tab.fitMode,
+      panOffset: tab.panOffset
+    }))
+
+    return {
+      name: null,
+      tabs: sessionTabs,
+      groups: groupToInclude ? [{
+        id: 'group-0',
+        name: groupToInclude.name,
+        color: groupToInclude.color,
+        order: 0,
+        tabIds: sessionTabs.map(t => t.id),
+        collapsed: false
+      }] : null,
+      activeTabId: tabsToInclude[0]?.id ?? null,
+      createdAt: new Date().toISOString(),
+      layoutPosition: layoutPosition.value,
+      layoutSize: layoutSize.value,
+      treeCollapsed: treeCollapsed.value
+    }
+  }
+
   // Open tab in new window
   const openTabInNewWindow = async (tabId: string) => {
     const { invoke } = await import('@tauri-apps/api/core')
@@ -893,25 +929,7 @@ export function useTabControls() {
       return
     }
 
-    // Create a minimal session with just this tab
-    const sessionData = {
-      name: null,
-      tabs: [{
-        id: tab.id,
-        imagePath: tab.imageData.path,
-        order: 0,
-        groupId: null,
-        zoomLevel: tab.zoomLevel,
-        fitMode: tab.fitMode,
-        panOffset: tab.panOffset
-      }],
-      groups: null,
-      activeTabId: tab.id,
-      createdAt: new Date().toISOString(),
-      layoutPosition: layoutPosition.value,
-      layoutSize: layoutSize.value,
-      treeCollapsed: treeCollapsed.value
-    }
+    const sessionData = createNewWindowSessionData([tab])
 
     try {
       await invoke('launch_new_instance', { sessionData })
@@ -940,34 +958,7 @@ export function useTabControls() {
       return
     }
 
-    // Create session with all tabs in the group
-    const sessionTabs = groupTabs.map((tab, index) => ({
-      id: tab.id,
-      imagePath: tab.imageData.path,
-      order: index,
-      groupId: 'group-0', // Recreate the group in new instance
-      zoomLevel: tab.zoomLevel,
-      fitMode: tab.fitMode,
-      panOffset: tab.panOffset
-    }))
-
-    const sessionData = {
-      name: null,
-      tabs: sessionTabs,
-      groups: [{
-        id: 'group-0',
-        name: group.name,
-        color: group.color,
-        order: 0,
-        tabIds: sessionTabs.map(t => t.id),
-        collapsed: false
-      }],
-      activeTabId: groupTabs[0]!.id, // Safe because we checked groupTabs.length === 0 earlier
-      createdAt: new Date().toISOString(),
-      layoutPosition: layoutPosition.value,
-      layoutSize: layoutSize.value,
-      treeCollapsed: treeCollapsed.value
-    }
+    const sessionData = createNewWindowSessionData(groupTabs, group)
 
     try {
       await invoke('launch_new_instance', { sessionData })
@@ -994,6 +985,7 @@ export function useTabControls() {
     sortedTabs,
     activeTab,
     treeViewItems,
+    currentLayout,
 
     // Tab management
     openTab,

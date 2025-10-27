@@ -125,6 +125,7 @@ import { useZoomControls } from '../composables/useZoomControls'
 import { useShortcutContext, type KeyboardActions } from '../composables/useShortcutContext'
 import { useUIConfigurations } from "../composables/useUIConfigurations.ts"
 import { useSessionManager } from '../composables/useSessionManager'
+import { getDirectoryPath } from '../utils/pathUtils'
 
 // Props and Emits
 const emit = defineEmits<{
@@ -140,6 +141,7 @@ const {
   selectedGroupId,
   activeTab,
   sortedTabs,
+  currentLayout,
   layoutPosition,
   layoutSize,
   treeCollapsed,
@@ -287,12 +289,6 @@ watch(fitMode, (mode) => {
 const isImageCorrupted = computed(() => {
   // Image is corrupted if we have a file entry but no valid assetUrl (empty string indicates corrupted)
   return currentFileEntry.value !== null && activeImage.value !== null && activeImage.value.assetUrl === ''
-})
-
-// Computed property that combines position and size (unless invisible)
-const currentLayout = computed(() => {
-  if (layoutPosition.value === 'invisible') return 'invisible'
-  return `${layoutPosition.value}-${layoutSize.value}` as 'top-small' | 'top-large' | 'tree-small' | 'tree-large'
 })
 
 // Helper function to scroll the active tab into view (centered)
@@ -458,9 +454,7 @@ const loadFolderContextForTab = async (tab: TabData) => {
   // Load folder context for this tab's image with lazy loading
   try {
     const imagePath = tab.imageData.path
-    // Handle both Windows (\) and Unix (/) path separators
-    const lastSeparatorIndex = Math.max(imagePath.lastIndexOf('/'), imagePath.lastIndexOf('\\'))
-    const folderPath = imagePath.substring(0, lastSeparatorIndex)
+    const folderPath = getDirectoryPath(imagePath)
 
     const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
 
@@ -1202,8 +1196,7 @@ const restoreFromSession = async (sessionData: SessionData) => {
         // CRITICAL: Only load folder context WITHOUT preloading adjacent images
         // This makes session restore much faster on network drives
         const imagePath = activeTab.imageData.path
-        const lastSeparatorIndex = Math.max(imagePath.lastIndexOf('/'), imagePath.lastIndexOf('\\'))
-        const folderPath = imagePath.substring(0, lastSeparatorIndex)
+        const folderPath = getDirectoryPath(imagePath)
 
         try {
           const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })

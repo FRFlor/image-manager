@@ -151,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useTabControls } from '../composables/useTabControls'
 
 // Emits
@@ -171,6 +171,7 @@ const {
   activeTabId,
   sortedTabs,
   treeViewItems,
+  currentLayout,
   selectedGroupId,
   contextMenuVisible,
   contextMenuPosition,
@@ -208,12 +209,6 @@ const groupContextMenuGroupId = ref<string | null>(null)
 // Template refs
 const treeItemsContainer = ref<HTMLElement>()
 const tabContainer = ref<HTMLElement>()
-
-// Computed
-const currentLayout = computed(() => {
-  if (layoutPosition.value === 'invisible') return 'invisible'
-  return `${layoutPosition.value}-${layoutSize.value}` as 'top-small' | 'top-large' | 'tree-small' | 'tree-large'
-})
 
 // Context menu handlers
 const handleCloseOtherTabs = () => {
@@ -757,58 +752,6 @@ defineExpose({
   height: 1px;
   background: #404040;
   margin: 4px 0;
-}
-
-/* Tree Panel (Left Sidebar) */
-.tree-panel {
-  display: flex;
-  flex-direction: column;
-  min-width: 200px;
-  max-width: 300px;
-  width: fit-content;
-  background: #2d2d2d;
-  border-right: 1px solid #404040;
-  flex-shrink: 0;
-  transition: all 0.3s ease;
-}
-
-/* Tree Panel - Collapsed State */
-.tree-panel.collapsed {
-  min-width: 60px;
-  max-width: 60px;
-  width: 60px;
-}
-
-.tree-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px;
-  border-bottom: 1px solid #404040;
-  background: #2d2d2d;
-}
-
-.tree-collapse-btn {
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 16px;
-  padding: 8px;
-  border-radius: 4px;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.tree-collapse-btn:hover {
-  background: #3d3d3d;
-  color: white;
-}
-
-.tree-items {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
 }
 
 .tree-item {
