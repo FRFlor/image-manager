@@ -98,8 +98,6 @@ export class BatchMetadataLoader {
         // Remove from loading set
         this.loadingPaths.delete(path)
       }
-
-      console.log(`📦 Batch loaded ${batchResults.filter(r => r !== null).length}/${pathsToLoad.length} images`)
     } catch (error) {
       console.error('Batch metadata load failed:', error)
       // Mark all as failed

@@ -492,13 +492,7 @@ const loadFolderContextForTab = async (tab: TabData) => {
 
       // Use batch loader for efficient parallel loading (non-blocking)
       if (pathsToPreload.length > 0) {
-        batchMetadataLoader.loadImageMetadataBatch(pathsToPreload, folderContext)
-          .then(() => {
-            console.log(`✅ Batch preloaded ${pathsToPreload.length} adjacent images for tab`)
-          })
-          .catch(err => {
-            console.warn('Batch preload failed for tab:', err)
-          })
+        batchMetadataLoader.loadImageMetadataBatch(pathsToPreload, folderContext);
       }
     }
 
@@ -539,14 +533,11 @@ const preloadAdjacentTabs = async (currentTabId: string) => {
 
   if (tabsToPreload.length === 0) return
 
-  console.log(`🔄 Preloading ${tabsToPreload.length} adjacent tabs in background...`)
-
   // Load tabs in parallel (non-blocking)
   const preloadPromises = tabsToPreload.map(async (tab) => {
     try {
       await loadFolderContextForTab(tab)
       tab.isFullyLoaded = true
-      console.log(`✅ Preloaded tab: ${tab.title}`)
     } catch (error) {
       console.warn(`Failed to preload tab: ${tab.title}`, error)
     }

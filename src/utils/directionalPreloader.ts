@@ -245,7 +245,6 @@ export class DirectionalPreloader {
       // Check if we've preloaded everything
       if (nextChunkStart >= fileEntries.length) {
         this.stopBackgroundPreload()
-        console.log('✅ Background preload completed - all images loaded')
         return
       }
 
@@ -260,7 +259,6 @@ export class DirectionalPreloader {
       }
 
       if (pathsToLoad.length > 0) {
-        console.log(`🔧 Background preload: loading images ${nextChunkStart}-${chunkEnd}`)
         batchMetadataLoader.loadImageMetadataBatch(pathsToLoad, folderContext)
           .then(results => {
             const urls = Array.from(results.values())

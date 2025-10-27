@@ -187,13 +187,7 @@ export class LazyImageLoader {
     this.processQueue()
 
     // Return a promise that resolves when all images are loaded (or failed)
-    return Promise.allSettled(loadPromises).then(results => {
-      const successful = results.filter(r => r.status === 'fulfilled').length
-      const failed = results.filter(r => r.status === 'rejected').length
-      if (successful > 0 || failed > 0) {
-        console.log(`📸 Preloaded ${successful}/${urls.length} images (${failed} failed)`)
-      }
-    })
+    return Promise.allSettled(loadPromises).then();
   }
 
   /**

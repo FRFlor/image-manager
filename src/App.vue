@@ -323,11 +323,7 @@ const handleOpenImageRequest = async () => {
 
       // Fire and forget - don't wait for preloading to complete
       // Images will be available when they finish loading in background
-      Promise.all(adjacentLoadPromises).then(() => {
-        console.log(`✅ Preloaded ${adjacentLoadPromises.length} adjacent images in background`)
-      }).catch(err => {
-        console.warn('Some adjacent images failed to preload:', err)
-      })
+      Promise.all(adjacentLoadPromises);
 
       // Create folder context
       const folderContext: FolderContext = {
