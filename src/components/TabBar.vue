@@ -41,11 +41,12 @@
           <!-- Tab Item -->
           <div
             v-else
-            @click="emit('tabSwitched', item.tab!.id)"
+            @click="handleTreeTabClick($event, item.tab!.id)"
             @contextmenu.prevent="showTabContextMenu($event, item.tab!.id)"
             class="tree-item"
             :class="{
               active: item.tab!.id === activeTabId,
+              selected: isTabSelected(item.tab!.id),
               grouped: !!item.tab!.groupId
             }">
             <img v-if="item.tab!.imageData.assetUrl" :src="item.tab!.imageData.assetUrl" :alt="item.tab!.title" class="tree-item-thumbnail" />
@@ -64,11 +65,12 @@
         <div
           v-for="tab in sortedTabs"
           :key="tab.id"
-          @click="emit('tabSwitched', tab.id)"
+          @click="handleTopTabClick($event, tab.id)"
           @contextmenu.prevent="showTabContextMenu($event, tab.id)"
           class="tab"
           :class="{
             active: tab.id === activeTabId,
+            selected: isTabSelected(tab.id),
             'group-blue': tab.groupId && getGroupColor(tab.groupId) === 'blue',
             'group-orange': tab.groupId && getGroupColor(tab.groupId) === 'orange'
           }">
@@ -110,7 +112,7 @@
           Rename Group...
         </div>
         <div class="context-menu-item" @click="handleContextMenuRemoveFromGroup">
-          Remove from Group
+          Remove from Group{{ selectionCount > 1 ? ` (${selectionCount} tabs)` : '' }}
         </div>
         <div class="context-menu-separator"></div>
       </template>
@@ -152,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useTabControls } from '../composables/useTabControls'
 
 // Emits
@@ -177,6 +179,7 @@ const {
   contextMenuVisible,
   contextMenuPosition,
   contextMenuTabId,
+  selectedTabIds,
   getGroupColor,
   getGroupName,
   selectGroupHeader,
@@ -193,6 +196,9 @@ const {
   dissolveGroup,
   openTabInNewWindow,
   openGroupInNewWindow,
+  handleTabClick,
+  isTabSelected,
+  clearSelection,
 
   layoutPosition,
   layoutSize,
@@ -210,6 +216,26 @@ const groupContextMenuGroupId = ref<string | null>(null)
 // Template refs
 const treeItemsContainer = ref<HTMLElement>()
 const tabContainer = ref<HTMLElement>()
+
+// Computed
+const selectionCount = computed(() => selectedTabIds.value.size)
+
+// Tab click handlers
+const handleTreeTabClick = (event: MouseEvent, tabId: string) => {
+  handleTabClick(tabId, event.shiftKey)
+  // Emit for parent component to handle state changes if needed
+  if (!event.shiftKey) {
+    emit('tabSwitched', tabId)
+  }
+}
+
+const handleTopTabClick = (event: MouseEvent, tabId: string) => {
+  handleTabClick(tabId, event.shiftKey)
+  // Emit for parent component to handle state changes if needed
+  if (!event.shiftKey) {
+    emit('tabSwitched', tabId)
+  }
+}
 
 // Context menu handlers
 const handleCloseOtherTabs = () => {
@@ -254,10 +280,16 @@ const handleContextMenuRenameGroup = () => {
 }
 
 const handleContextMenuRemoveFromGroup = () => {
-  const tabIdToRemove = contextMenuRemoveFromGroupBase()
-  if (!tabIdToRemove) return
+  const tabIdsToRemove = contextMenuRemoveFromGroupBase()
+  if (!tabIdsToRemove || tabIdsToRemove.length === 0) return
 
-  removeTabFromGroup(tabIdToRemove)
+  // Remove all selected tabs from their groups
+  tabIdsToRemove.forEach(tabId => removeTabFromGroup(tabId))
+
+  // Clear selection after action
+  clearSelection()
+
+  console.log(`Removed ${tabIdsToRemove.length} tab(s) from group`)
   contextMenuVisible.value = false
 }
 
@@ -423,6 +455,16 @@ defineExpose({
 /* Adjust padding for collapsed active items */
 .tree-panel.collapsed .tree-item.active {
   padding-left: 5px; /* Less compensation needed when centered */
+}
+
+/* Selected state (multi-selection) */
+.tree-item.selected {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tree-item.selected.active {
+  background: #1a1a1a;
+  border-left-color: #007bff;
 }
 
 .tree-item-thumbnail {
@@ -614,6 +656,16 @@ defineExpose({
   border-bottom: 2px solid #007bff;
 }
 
+/* Selected state (multi-selection) */
+.tab.selected {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tab.selected.active {
+  background: #1a1a1a;
+  border-bottom-color: #007bff;
+}
+
 .tab-thumbnail {
   width: 20px;
   height: 20px;
@@ -787,6 +839,16 @@ defineExpose({
 /* Adjust padding for collapsed active items */
 .tree-panel.collapsed .tree-item.active {
   padding-left: 5px; /* Less compensation needed when centered */
+}
+
+/* Selected state (multi-selection) */
+.tree-item.selected {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tree-item.selected.active {
+  background: #1a1a1a;
+  border-left-color: #007bff;
 }
 
 .tree-item-thumbnail {
@@ -989,6 +1051,16 @@ defineExpose({
 .tab.active {
   background: #1a1a1a;
   border-bottom: 2px solid #007bff;
+}
+
+/* Selected state (multi-selection) */
+.tab.selected {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tab.selected.active {
+  background: #1a1a1a;
+  border-bottom-color: #007bff;
 }
 
 .tab-thumbnail {

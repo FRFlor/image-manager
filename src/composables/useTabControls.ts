@@ -18,6 +18,10 @@ const contextMenuVisible = ref(false)
 const contextMenuPosition = ref({ x: 0, y: 0 })
 const contextMenuTabId = ref<string | null>(null)
 
+// Multi-selection state
+const selectedTabIds = ref<Set<string>>(new Set())
+const lastClickedTabId = ref<string | null>(null)
+
 // Tab layout state (split into position and size)
 const layoutPosition = ref<'invisible' | 'top' | 'tree'>('tree')
 const layoutSize = ref<'small' | 'large'>('small')
@@ -163,6 +167,12 @@ export function useTabControls() {
       removeTabFromGroup(tabId)
     }
 
+    // Remove from selection if selected
+    selectedTabIds.value.delete(tabId)
+    if (lastClickedTabId.value === tabId) {
+      lastClickedTabId.value = null
+    }
+
     // Execute cleanup callback if provided
     if (beforeCloseCallback) {
       beforeCloseCallback(tabId)
@@ -219,6 +229,50 @@ export function useTabControls() {
     if (activeTabId.value) {
       return activeTabId.value
     }
+  }
+
+  // Multi-selection functions
+  const handleTabClick = (tabId: string, isShift: boolean, saveStateCallback?: (tabId: string) => void) => {
+    if (isShift && lastClickedTabId.value) {
+      // Shift+click: Select range from lastClicked to current
+      selectTabRange(lastClickedTabId.value, tabId)
+      // Don't change active tab on shift+click
+    } else {
+      // Normal click: Switch to tab and clear selection
+      clearSelection()
+      switchToTab(tabId, saveStateCallback)
+      lastClickedTabId.value = tabId
+    }
+  }
+
+  const selectTabRange = (fromTabId: string, toTabId: string) => {
+    const tabArray = sortedTabs.value
+    const fromIndex = tabArray.findIndex(tab => tab.id === fromTabId)
+    const toIndex = tabArray.findIndex(tab => tab.id === toTabId)
+
+    if (fromIndex === -1 || toIndex === -1) return
+
+    const startIndex = Math.min(fromIndex, toIndex)
+    const endIndex = Math.max(fromIndex, toIndex)
+
+    // Clear previous selection and select range
+    selectedTabIds.value.clear()
+    for (let i = startIndex; i <= endIndex; i++) {
+      const tab = tabArray[i]
+      if (tab) {
+        selectedTabIds.value.add(tab.id)
+      }
+    }
+
+    console.log(`Selected ${selectedTabIds.value.size} tabs (range)`)
+  }
+
+  const clearSelection = () => {
+    selectedTabIds.value.clear()
+  }
+
+  const isTabSelected = (tabId: string): boolean => {
+    return selectedTabIds.value.has(tabId)
   }
 
   // Tab reordering functions
@@ -740,6 +794,11 @@ export function useTabControls() {
 
   // Context menu functions
   const showTabContextMenu = (event: MouseEvent, tabId: string) => {
+    // If right-clicking an unselected tab, clear selection
+    if (!selectedTabIds.value.has(tabId)) {
+      clearSelection()
+    }
+
     contextMenuPosition.value = { x: event.clientX, y: event.clientY }
     contextMenuTabId.value = tabId
     contextMenuVisible.value = true
@@ -824,10 +883,21 @@ export function useTabControls() {
   const contextMenuRemoveFromGroup = () => {
     if (!contextMenuTabId.value) return null
 
-    const tab = tabs.value.get(contextMenuTabId.value)
-    if (!tab || !tab.groupId) return null
+    const clickedTab = tabs.value.get(contextMenuTabId.value)
+    if (!clickedTab) return null
 
-    return contextMenuTabId.value
+    // If the clicked tab is in the selection, return all selected tabs that have a groupId
+    if (selectedTabIds.value.has(contextMenuTabId.value) && selectedTabIds.value.size > 1) {
+      const tabsToRemove = Array.from(selectedTabIds.value)
+        .filter(tabId => {
+          const tab = tabs.value.get(tabId)
+          return tab && tab.groupId
+        })
+      return tabsToRemove.length > 0 ? tabsToRemove : null
+    }
+
+    // Single tab: only return if it has a groupId
+    return clickedTab.groupId ? [contextMenuTabId.value] : null
   }
 
   const contextMenuDissolveGroup = () => {
@@ -977,6 +1047,8 @@ export function useTabControls() {
     contextMenuVisible,
     contextMenuPosition,
     contextMenuTabId,
+    selectedTabIds,
+    lastClickedTabId,
 
     // Computed
     sortedTabs,
@@ -992,6 +1064,12 @@ export function useTabControls() {
     switchToPreviousTab,
     closeCurrentTab,
     clearTabs,
+
+    // Multi-selection
+    handleTabClick,
+    selectTabRange,
+    clearSelection,
+    isTabSelected,
 
     // Tab reordering
     moveTab,
