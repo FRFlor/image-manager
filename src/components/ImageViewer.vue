@@ -103,7 +103,20 @@
           </button>
         </div>
       </div>
-      <div class="mini-info-bar" v-else>{{ currentImageIndex + 1 }} of {{ currentFolderSize }}</div>
+      <div class="mini-info-bar" v-else>
+        <div v-if="duplicateTabs.length > 0" class="duplicate-tabs-notice mini">
+          <button
+              v-for="(dup, index) in duplicateTabs"
+              :key="dup.tabId"
+              @click="switchToTab(dup.tabId)"
+              class="duplicate-link"
+              :title="dup.groupName ? `${dup.tabTitle} (${dup.groupName})` : dup.tabTitle"
+          >
+            {{ index + 1 }}
+          </button>
+        </div>
+        {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
+      </div>
     </div>
 
     <!-- Group Grid Preview -->
@@ -1495,6 +1508,12 @@ defineExpose({
   gap: 6px;
   margin-top: 6px;
   font-size: 12px;
+}
+
+.duplicate-tabs-notice.mini {
+  gap: 2px;
+  margin-top: 2px;
+  font-size: 10px;
 }
 
 .duplicate-label {
