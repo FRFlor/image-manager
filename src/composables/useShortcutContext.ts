@@ -29,7 +29,7 @@ export interface KeyboardActions {
   moveTabRight: () => void
   moveTabLeft: () => void
 
-  // Tab grouping
+  // Tab groupingmmm
   joinWithLeft: () => void
   joinWithRight: () => void
 

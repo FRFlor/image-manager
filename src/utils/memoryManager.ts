@@ -16,7 +16,7 @@ export class MemoryManager {
   private static instance: MemoryManager
   private resources: Set<ResourceCleanup> = new Set()
   private imageCache: Map<string, CacheEntry> = new Map()
-  private maxCacheSize = 1000 // Massively increased from 100 to 1000 for ultra-aggressive caching
+  private maxCacheSize = 200 // Balanced cache size (increased from 100, but not too aggressive)
   private cleanupInterval: number | null = null
   private currentPosition: number = -1 // Track current position for directional eviction
   private navigationDirection: 'forward' | 'backward' | 'unknown' = 'unknown'
@@ -85,7 +85,7 @@ export class MemoryManager {
     let victimKey: string | null = null
     let victimScore = -Infinity // Higher score = better candidate for eviction
 
-    const protectionDistance = 100 // Never evict images within ±100 of current position
+    const protectionDistance = 20 // Never evict images within ±20 of current position
 
     for (const [key, entry] of this.imageCache.entries()) {
       // Skip if position not set

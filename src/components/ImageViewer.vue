@@ -461,8 +461,8 @@ const loadFolderContextForTab = async (tab: TabData) => {
 
     const selectedIndex = imageFileEntries.findIndex(entry => entry.path === imagePath)
     if (selectedIndex !== -1) {
-      // Use batch loader for ultra-fast initial preload
-      const PRELOAD_RANGE = 50 // Massively increased from 2 to 50
+      // Use batch loader for initial preload
+      const PRELOAD_RANGE = 10 // Balanced preload (reduced from 50)
       const startIndex = Math.max(0, selectedIndex - PRELOAD_RANGE)
       const endIndex = Math.min(imageFileEntries.length - 1, selectedIndex + PRELOAD_RANGE)
 

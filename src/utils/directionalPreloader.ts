@@ -19,9 +19,9 @@ export class DirectionalPreloader {
   private backgroundPreloadWorker: number | null = null
   private lastPreloadIndex: number = -1
 
-  // Preload distances (aggressive settings)
-  private readonly basePreloadRange = 100 // ±100 images base
-  private readonly directionBoostRange = 200 // +200 in direction of nav
+  // Preload distances (balanced settings)
+  private readonly basePreloadRange = 10 // ±10 images base (reduced from 100)
+  private readonly directionBoostRange = 30 // +30 in direction of nav (reduced from 200)
   private readonly rapidModeMultiplier = 2 // 2x boost in rapid mode
 
   // Thresholds

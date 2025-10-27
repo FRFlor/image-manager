@@ -6,20 +6,12 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import type { ImageData, FileEntry, FolderContext } from '../types'
 
-interface PendingBatch {
-  paths: string[]
-  callbacks: Map<string, (imageData: ImageData | null) => void>
-  timeoutId: number
-}
-
 export class BatchMetadataLoader {
-  private pendingBatch: PendingBatch | null = null
-  private readonly batchSize = 50 // Load up to 50 images at once
-  private readonly batchDelay = 10 // ms to wait before sending batch (allows grouping)
   private loadingPaths = new Set<string>() // Track currently loading paths to avoid duplicates
 
   /**
-   * Load image metadata for a single path, batching with other requests
+   * Load image metadata for a single path, using direct load (no batching)
+   * This is faster for critical navigation path
    */
   async loadImageMetadata(filePath: string, folderContext: FolderContext): Promise<ImageData | null> {
     // Check if already loaded in cache
@@ -27,45 +19,28 @@ export class BatchMetadataLoader {
       return folderContext.loadedImages.get(filePath)!
     }
 
-    // Check if already loading
-    if (this.loadingPaths.has(filePath)) {
-      // Wait for existing batch to complete
-      return new Promise<ImageData | null>((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (folderContext.loadedImages.has(filePath)) {
-            clearInterval(checkInterval)
-            resolve(folderContext.loadedImages.get(filePath)!)
-          } else if (!this.loadingPaths.has(filePath)) {
-            // Loading failed
-            clearInterval(checkInterval)
-            resolve(null)
-          }
-        }, 50)
-      })
+    // Use direct load instead of batching for critical path performance
+    try {
+      const rawData = await invoke<any>('read_image_file', { path: filePath })
+      if (!rawData) return null
+
+      const imageData: ImageData = {
+        id: rawData.id,
+        name: rawData.name,
+        path: rawData.path,
+        assetUrl: convertFileSrc(rawData.path),
+        dimensions: rawData.dimensions,
+        fileSize: rawData.file_size,
+        lastModified: new Date(rawData.last_modified)
+      }
+
+      // Cache it
+      folderContext.loadedImages.set(filePath, imageData)
+      return imageData
+    } catch (error) {
+      console.error(`Failed to load image metadata for ${filePath}:`, error)
+      return null
     }
-
-    // Mark as loading
-    this.loadingPaths.add(filePath)
-
-    return new Promise<ImageData | null>((resolve) => {
-      // Create or add to pending batch
-      if (!this.pendingBatch) {
-        this.pendingBatch = {
-          paths: [],
-          callbacks: new Map(),
-          timeoutId: window.setTimeout(() => this.flushBatch(folderContext), this.batchDelay)
-        }
-      }
-
-      this.pendingBatch.paths.push(filePath)
-      this.pendingBatch.callbacks.set(filePath, resolve)
-
-      // If batch is full, flush immediately
-      if (this.pendingBatch.paths.length >= this.batchSize) {
-        clearTimeout(this.pendingBatch.timeoutId)
-        this.flushBatch(folderContext)
-      }
-    })
   }
 
   /**
@@ -145,46 +120,9 @@ export class BatchMetadataLoader {
   }
 
   /**
-   * Flush pending batch immediately
-   */
-  private async flushBatch(folderContext: FolderContext): Promise<void> {
-    if (!this.pendingBatch || this.pendingBatch.paths.length === 0) {
-      this.pendingBatch = null
-      return
-    }
-
-    const batch = this.pendingBatch
-    this.pendingBatch = null
-
-    try {
-      // Load all images in batch
-      const results = await this.loadImageMetadataBatch(batch.paths, folderContext)
-
-      // Resolve all callbacks
-      for (const [path, callback] of batch.callbacks.entries()) {
-        callback(results.get(path) || null)
-      }
-    } catch (error) {
-      console.error('Failed to flush batch:', error)
-      // Resolve all with null
-      for (const callback of batch.callbacks.values()) {
-        callback(null)
-      }
-    }
-  }
-
-  /**
-   * Cancel any pending batches
+   * Cancel any pending loads
    */
   cancelPending(): void {
-    if (this.pendingBatch) {
-      clearTimeout(this.pendingBatch.timeoutId)
-      // Resolve all with null
-      for (const callback of this.pendingBatch.callbacks.values()) {
-        callback(null)
-      }
-      this.pendingBatch = null
-    }
     this.loadingPaths.clear()
   }
 
