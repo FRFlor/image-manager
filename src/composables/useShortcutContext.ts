@@ -10,6 +10,8 @@ const context = ref<ShortcutContext>('default')
 const lastKeyPressTime = ref(0)
 const KEY_REPEAT_THRESHOLD = 50 // ms - minimum time between key presses
 const KEYBOARD_PAN_STEP: number = 40
+const KEYBOARD_SHORTCUT_THROTTLE = 350 // ms - minimum time between shortcut handling
+const lastShortcutHandleTime = ref(0)
 
 export interface KeyboardActions {
   // Image navigation
@@ -118,6 +120,12 @@ export function useShortcutContext(actions?: KeyboardActions) {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
       return
     }
+
+    const currentTime = Date.now()
+    if (currentTime - lastShortcutHandleTime.value < KEYBOARD_SHORTCUT_THROTTLE) {
+      return
+    }
+    lastShortcutHandleTime.value = currentTime
 
     // Try to handle as keyboard pan first
     if (tryHandleKeyboardPan(event)) {
