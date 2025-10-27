@@ -682,6 +682,76 @@ export function useTabControls() {
     }
   }
 
+  const toggleFavouriteForTab = (targetTabId: string): void => {
+    const targetTab = tabs.value.get(targetTabId)
+    if (!targetTab) {
+      console.warn(`Tab ${targetTabId} not found`)
+      return
+    }
+
+    const imagePath = targetTab.imageData.path
+
+    // Check if image is already favourited
+    if (isImageFavourited(imagePath)) {
+      // Unfavourite: Find and close the tab with this image in favourites group
+      const favouritesTabs = Array.from(tabs.value.values()).filter(tab =>
+        tab.groupId === FAVOURITES_GROUP_ID && tab.imageData.path === imagePath
+      )
+
+      if (favouritesTabs.length > 0) {
+        const tabToRemove = favouritesTabs[0]
+        if (tabToRemove) {
+          // Delete the tab entirely from favourites
+          tabs.value.delete(tabToRemove.id)
+          // Also clean up folder context
+          tabFolderContexts.value.delete(tabToRemove.id)
+          console.log(`Unfavourited image: ${targetTab.imageData.name}`)
+        }
+      }
+    } else {
+      // Favourite: Create a clone tab in favourites group
+      const tabId = `tab-${Date.now()}`
+
+      // Get folder context from target tab
+      const folderContext = tabFolderContexts.value.get(targetTabId)
+      if (!folderContext) {
+        console.warn('No folder context available for favouriting')
+        return
+      }
+
+      // Find the highest order in favourites group
+      const favouritesTabs = Array.from(tabs.value.values()).filter(tab => tab.groupId === FAVOURITES_GROUP_ID)
+      const maxFavouritesOrder = favouritesTabs.length > 0
+        ? Math.max(...favouritesTabs.map(tab => tab.order))
+        : -1
+
+      const favouriteTab: TabData = {
+        id: tabId,
+        title: targetTab.imageData.name,
+        imageData: targetTab.imageData,
+        isActive: false,
+        order: maxFavouritesOrder + 1,
+        isFullyLoaded: true,
+        groupId: FAVOURITES_GROUP_ID,
+        zoomLevel: targetTab.zoomLevel,
+        fitMode: targetTab.fitMode,
+        panOffset: targetTab.panOffset
+      }
+
+      tabs.value.set(tabId, favouriteTab)
+
+      // Clone the folder context for the new tab
+      const clonedFolderContext: FolderContext = {
+        fileEntries: folderContext.fileEntries,
+        loadedImages: new Map(folderContext.loadedImages),
+        folderPath: folderContext.folderPath
+      }
+      tabFolderContexts.value.set(tabId, clonedFolderContext)
+
+      console.log(`Favourited image: ${targetTab.imageData.name}`)
+    }
+  }
+
   const selectGroupHeader = (groupId: string): void => {
     activeTabId.value = null
     selectedGroupId.value = groupId
@@ -1259,6 +1329,7 @@ export function useTabControls() {
     // Favourites management
     isImageFavourited,
     toggleFavourite,
+    toggleFavouriteForTab,
 
     // Tab Layout,
     layoutPosition,

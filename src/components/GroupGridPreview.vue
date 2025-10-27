@@ -74,7 +74,7 @@ const emit = defineEmits<{
 }>()
 
 // Get favourites functions from composable
-const { isImageFavourited, toggleFavourite, tabs } = useTabControls()
+const { isImageFavourited, toggleFavouriteForTab } = useTabControls()
 
 // State
 const selectedImageId = ref<string | null>(null)
@@ -133,21 +133,8 @@ const handleKeyDown = (event: KeyboardEvent) => {
       const tabId = props.tabIds[selectedIndex]
 
       if (tabId) {
-        // Temporarily set this tab as active to favourite it
-        const tab = tabs.value.get(tabId)
-        if (tab) {
-          // Store the original active tab (if we want to switch back)
-          // But for now, just call toggleFavourite which uses the active tab
-          // We need to emit this back to parent to switch tab temporarily
-
-          // Actually, we need to switch to this tab first
-          emit('imageSelected', selectedImageId.value)
-
-          // Then toggle favourite in next tick
-          setTimeout(() => {
-            toggleFavourite()
-          }, 50)
-        }
+        // Toggle favourite without switching tabs
+        toggleFavouriteForTab(tabId)
       }
     }
   }
