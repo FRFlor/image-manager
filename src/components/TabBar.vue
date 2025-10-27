@@ -104,6 +104,9 @@
         <div class="context-menu-item" @click="handleContextMenuCreateGroupWithNext">
           Group with Next Tab
         </div>
+        <div v-if="canCreateGroupFromSelection" class="context-menu-item" @click="handleContextMenuCreateGroupFromSelection">
+          Create Group from Selection ({{ selectionCount }} tabs)
+        </div>
         <div class="context-menu-separator"></div>
       </template>
 
@@ -189,10 +192,12 @@ const {
   closeTabsToRight,
   closeTabsToLeft,
   contextMenuCreateGroupWithNext,
+  contextMenuCanCreateGroupFromSelection,
   contextMenuRenameGroup: contextMenuRenameGroupBase,
   contextMenuRemoveFromGroup: contextMenuRemoveFromGroupBase,
   renameGroup,
   removeTabFromGroup,
+  createGroup,
   dissolveGroup,
   openTabInNewWindow,
   openGroupInNewWindow,
@@ -219,6 +224,10 @@ const tabContainer = ref<HTMLElement>()
 
 // Computed
 const selectionCount = computed(() => selectedTabIds.value.size)
+const canCreateGroupFromSelection = computed(() => {
+  const result = contextMenuCanCreateGroupFromSelection()
+  return result.canCreate
+})
 
 // Tab click handlers
 const handleTreeTabClick = (event: MouseEvent, tabId: string) => {
@@ -264,6 +273,18 @@ const handleCloseTabsToLeft = () => {
 
 const handleContextMenuCreateGroupWithNext = () => {
   contextMenuCreateGroupWithNext()
+  contextMenuVisible.value = false
+}
+
+const handleContextMenuCreateGroupFromSelection = () => {
+  const result = contextMenuCanCreateGroupFromSelection()
+  if (!result.canCreate || result.tabIds.length < 2) return
+
+  const groupName = `Group ${tabGroups.value.size + 1}`
+  createGroup(groupName, result.tabIds)
+  console.log(`✅ Created group "${groupName}" with ${result.tabIds.length} tabs`)
+  clearSelection()
+
   contextMenuVisible.value = false
 }
 

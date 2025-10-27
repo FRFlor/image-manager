@@ -868,6 +868,26 @@ export function useTabControls() {
     }
   }
 
+  const contextMenuCanCreateGroupFromSelection = (): { canCreate: boolean, tabIds: string[] } => {
+    // Need at least 2 tabs selected
+    if (selectedTabIds.value.size < 2) {
+      return { canCreate: false, tabIds: [] }
+    }
+
+    // Check that ALL selected tabs are ungrouped
+    const selectedTabIdArray = Array.from(selectedTabIds.value)
+    const allUngrouped = selectedTabIdArray.every(tabId => {
+      const tab = tabs.value.get(tabId)
+      return tab && !tab.groupId
+    })
+
+    if (allUngrouped) {
+      return { canCreate: true, tabIds: selectedTabIdArray }
+    }
+
+    return { canCreate: false, tabIds: [] }
+  }
+
   const contextMenuRenameGroup = () => {
     if (!contextMenuTabId.value) return
 
@@ -1107,6 +1127,7 @@ export function useTabControls() {
     closeTabsToRight,
     closeTabsToLeft,
     contextMenuCreateGroupWithNext,
+    contextMenuCanCreateGroupFromSelection,
     contextMenuRenameGroup,
     contextMenuRemoveFromGroup,
     contextMenuDissolveGroup,
