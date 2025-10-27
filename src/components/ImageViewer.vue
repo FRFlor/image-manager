@@ -1381,9 +1381,9 @@ defineExpose({
 /* Favourite Star Indicator */
 .favourite-star {
   position: absolute;
-  top: 30px;
-  right: 30px;
-  font-size: 48px;
+  top: 10px;
+  right: 10px;
+  font-size: 16px;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
   pointer-events: none;
   z-index: 10;
