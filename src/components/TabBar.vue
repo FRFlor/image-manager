@@ -21,8 +21,9 @@
       <div class="tree-items" ref="treeItemsContainer">
         <template v-for="item in treeViewItems" :key="item.type === 'group' ? `group-${item.groupId}` : `tab-${item.tab!.id}`">
           <!-- Group Header -->
-          <div
+          <header
             v-if="item.type === 'group'"
+            @click="selectGroupHeader(item.groupId!)"
             @contextmenu.prevent="showGroupContextMenu($event, item.groupId!)"
             class="tree-group-header"
             :class="{
@@ -35,8 +36,8 @@
               <span v-if="tabGroups.get(item.groupId!)?.collapsed">▶</span>
               <span v-else>▼</span>
             </button>
-            <span v-if="!treeCollapsed" @click="selectGroupHeader(item.groupId!)" class="group-header-title">{{ getGroupName(item.groupId!) }}</span>
-          </div>
+            <span v-if="!treeCollapsed" class="group-header-title">{{ getGroupName(item.groupId!) }}</span>
+          </header>
           <!-- Tab Item -->
           <div
             v-else
