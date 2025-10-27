@@ -63,7 +63,7 @@ pub struct TabGroup {
     id: String,
     name: String,
     color: String, // "blue", "orange", or "gold"
-    order: u32,
+    order: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     collapsed: Option<bool>,
 }
@@ -105,7 +105,7 @@ pub struct SessionTab {
     id: String,
     #[serde(rename = "imagePath")]
     image_path: String,
-    order: u32,
+    order: i32,
     #[serde(rename = "groupId", skip_serializing_if = "Option::is_none")]
     group_id: Option<String>,
     #[serde(rename = "zoomLevel", skip_serializing_if = "Option::is_none")]
