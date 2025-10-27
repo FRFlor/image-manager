@@ -104,6 +104,8 @@
         </div>
       </div>
       <div class="mini-info-bar" v-else>
+        {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
+
         <div v-if="duplicateTabs.length > 0" class="duplicate-tabs-notice mini">
           <button
               v-for="(dup, index) in duplicateTabs"
@@ -115,7 +117,6 @@
             {{ index + 1 }}
           </button>
         </div>
-        {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
       </div>
     </div>
 
@@ -1471,6 +1472,9 @@ defineExpose({
 }
 
 .mini-info-bar {
+  display: flex;
+  gap: 20px;
+  align-items: center;
   padding: 2px 10px;
   background: #2d2d2d;
   font-size: 10px;

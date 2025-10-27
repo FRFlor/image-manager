@@ -1308,7 +1308,7 @@ export function useTabControls() {
       if (tabId === targetTabId) continue
 
       // Check if same image path
-      if (tab.imageData.path === currentPath) {
+      if (tab.imageData.path === currentPath && tab.groupId !== FAVOURITES_GROUP_ID) {
         duplicates.push({
           tabId: tab.id,
           tabTitle: tab.title,
