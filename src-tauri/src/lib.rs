@@ -351,6 +351,119 @@ async fn read_image_file(path: String, state: State<'_, AppState>) -> Result<Ima
     })
 }
 
+// Batch version of read_image_file for efficient bulk loading
+#[tauri::command]
+async fn read_image_files_batch(paths: Vec<String>, state: State<'_, AppState>) -> Result<Vec<Option<ImageData>>, String> {
+    use tokio::task;
+
+    // Process images in parallel using tokio tasks
+    let mut handles = vec![];
+
+    for path in paths {
+        let cache = state.metadata_cache.clone();
+        let handle = task::spawn(async move {
+            read_image_file_internal(&path, &cache).await
+        });
+        handles.push(handle);
+    }
+
+    // Wait for all tasks to complete
+    let mut results = vec![];
+    for handle in handles {
+        match handle.await {
+            Ok(result) => results.push(result.ok()),
+            Err(_) => results.push(None),
+        }
+    }
+
+    Ok(results)
+}
+
+// Internal version of read_image_file that can be called from batch
+async fn read_image_file_internal(path: &str, cache: &Arc<MetadataCache>) -> Result<ImageData, String> {
+    let image_path = Path::new(path);
+
+    if !image_path.exists() {
+        return Err(format!("Image file does not exist: {}", path));
+    }
+
+    if !image_path.is_file() {
+        return Err(format!("Path is not a file: {}", path));
+    }
+
+    // Validate file extension
+    let supported_extensions = get_supported_image_extensions();
+    let extension = image_path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_lowercase())
+        .ok_or_else(|| "File has no extension".to_string())?;
+
+    if !supported_extensions.contains(&extension) {
+        return Err(format!("Unsupported image format: {}", extension));
+    }
+
+    // Get file metadata
+    let metadata = fs::metadata(&image_path)
+        .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+
+    let file_size = metadata.len();
+    let last_modified = metadata.modified()
+        .map_err(|e| format!("Failed to get file modification time: {}", e))
+        .and_then(|time| {
+            Ok(DateTime::<Utc>::from(time).format("%Y-%m-%d %H:%M:%S UTC").to_string())
+        })?;
+
+    // Check cache first
+    let dimensions = if let Some(cached) = cache.get(path, &last_modified)? {
+        // Cache hit! Use cached dimensions
+        ImageDimensions {
+            width: cached.width,
+            height: cached.height,
+        }
+    } else {
+        // Cache miss - read image dimensions from file
+        let dims = match ImageReader::open(&image_path) {
+            Ok(reader) => {
+                match reader.with_guessed_format() {
+                    Ok(reader_with_format) => {
+                        match reader_with_format.into_dimensions() {
+                            Ok((width, height)) => ImageDimensions { width, height },
+                            Err(e) => return Err(format!("Failed to read image dimensions: {}", e)),
+                        }
+                    }
+                    Err(e) => return Err(format!("Failed to detect image format: {}", e)),
+                }
+            }
+            Err(e) => return Err(format!("Failed to open image file: {}", e)),
+        };
+
+        // Store in cache for future use
+        cache.set(path, &last_modified, dims.width, dims.height, file_size)?;
+
+        dims
+    };
+
+    // Generate unique ID and asset URL
+    let id = Uuid::new_v4().to_string();
+    let name = image_path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    // Create asset URL for Tauri's asset protocol
+    let asset_url = format!("asset://localhost/{}", path.replace("\\", "/"));
+
+    Ok(ImageData {
+        id,
+        name,
+        path: path.to_string(),
+        asset_url,
+        dimensions,
+        file_size,
+        last_modified,
+    })
+}
+
 fn get_supported_image_extensions() -> Vec<String> {
     vec![
         "jpg".to_string(),
@@ -1094,6 +1207,7 @@ pub fn run() {
             browse_folder_paginated,
             get_folder_image_count,
             read_image_file,
+            read_image_files_batch,
             get_supported_image_types,
             open_folder_dialog,
             open_image_dialog,

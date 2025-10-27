@@ -121,6 +121,8 @@ import TabBar from './TabBar.vue'
 import ZoomControls from './ZoomControls.vue'
 import { memoryManager, ManagedResource } from '../utils/memoryManager'
 import { lazyImageLoader } from '../utils/lazyLoader'
+import { batchMetadataLoader } from '../utils/batchMetadataLoader'
+import { directionalPreloader } from '../utils/directionalPreloader'
 import { useTabControls } from '../composables/useTabControls'
 import { useZoomControls } from '../composables/useZoomControls'
 import { useShortcutContext, type KeyboardActions } from '../composables/useShortcutContext'
@@ -209,7 +211,7 @@ const preloadedImages = ref<Set<string>>(new Set())
 const navigationInProgress = ref(false)
 const pendingNavigationDirection = ref<'next' | 'prev' | null>(null)
 const navigationQueue = ref<Array<'next' | 'prev'>>([])
-const MAX_NAVIGATION_QUEUE_DEPTH = 3 // Maximum number of pending navigations
+const MAX_NAVIGATION_QUEUE_DEPTH = 50 // Massively increased from 3 to 50 for rapid arrow key holds
 const navigationSequenceId = ref(0)
 
 // Track if we're currently switching tabs to avoid changing shortcut context
@@ -337,33 +339,10 @@ const scrollActiveTabIntoView = () => {
   })
 }
 
-// Helper function to load image metadata on-demand
+// Helper function to load image metadata on-demand (now uses batch loader)
 const loadImageMetadata = async (filePath: string, folderContext: FolderContext): Promise<ImageData | null> => {
-  // Check if already loaded in cache
-  if (folderContext.loadedImages.has(filePath)) {
-    return folderContext.loadedImages.get(filePath)!
-  }
-
-  try {
-    // Load image metadata from backend
-    const rawData = await invoke<any>('read_image_file', { path: filePath })
-    const imageData: ImageData = {
-      id: rawData.id,
-      name: rawData.name,
-      path: rawData.path,
-      assetUrl: convertFileSrc(rawData.path),
-      dimensions: rawData.dimensions,
-      fileSize: rawData.file_size,
-      lastModified: new Date(rawData.last_modified)
-    }
-
-    // Cache it for future use
-    folderContext.loadedImages.set(filePath, imageData)
-    return imageData
-  } catch (error) {
-    console.error(`Failed to load image metadata for ${filePath}:`, error)
-    return null
-  }
+  // Use batch metadata loader for efficient loading
+  return await batchMetadataLoader.loadImageMetadata(filePath, folderContext)
 }
 
 
@@ -482,32 +461,32 @@ const loadFolderContextForTab = async (tab: TabData) => {
 
     const selectedIndex = imageFileEntries.findIndex(entry => entry.path === imagePath)
     if (selectedIndex !== -1) {
-      const PRELOAD_RANGE = 2 // Reduced from 3 to 2 for faster initial load
+      // Use batch loader for ultra-fast initial preload
+      const PRELOAD_RANGE = 50 // Massively increased from 2 to 50
       const startIndex = Math.max(0, selectedIndex - PRELOAD_RANGE)
       const endIndex = Math.min(imageFileEntries.length - 1, selectedIndex + PRELOAD_RANGE)
 
-      // Start preloading adjacent images in background (non-blocking)
-      const adjacentLoadPromises: Promise<void>[] = []
+      // Collect paths for batch loading
+      const pathsToPreload: string[] = []
       for (let i = startIndex; i <= endIndex; i++) {
         if (i !== selectedIndex) {
           const entry = imageFileEntries[i]
           if (entry) {
-            adjacentLoadPromises.push(
-              loadImageMetadata(entry.path, folderContext)
-                .then(() => {})
-                .catch(err => {
-                  // Silently skip corrupted images during preloading
-                  console.warn(`Skipping corrupted image during folder context preload: ${entry.path}`, err)
-                })
-            )
+            pathsToPreload.push(entry.path)
           }
         }
       }
 
-      // Fire and forget - don't wait for preloading to complete (non-blocking)
-      Promise.allSettled(adjacentLoadPromises).then(() => {
-        console.log(`✅ Background preloaded ${adjacentLoadPromises.length} adjacent images for tab`)
-      })
+      // Use batch loader for efficient parallel loading (non-blocking)
+      if (pathsToPreload.length > 0) {
+        batchMetadataLoader.loadImageMetadataBatch(pathsToPreload, folderContext)
+          .then(() => {
+            console.log(`✅ Batch preloaded ${pathsToPreload.length} adjacent images for tab`)
+          })
+          .catch(err => {
+            console.warn('Batch preload failed for tab:', err)
+          })
+      }
     }
 
     // Store folder context for this tab
@@ -620,7 +599,7 @@ const previousImage = async () => {
   await performNavigation('prev')
 }
 
-// Core navigation function with race condition prevention
+// Core navigation function with race condition prevention and directional tracking
 const performNavigation = async (direction: 'next' | 'prev') => {
   if (!activeTabId.value) return
 
@@ -656,10 +635,14 @@ const performNavigation = async (direction: 'next' | 'prev') => {
       targetIndex = currentIndex === 0 ? folderContext.fileEntries.length - 1 : currentIndex - 1
     }
 
+    // Track navigation for directional preloading
+    directionalPreloader.trackNavigation(targetIndex, currentIndex)
+
     const targetEntry = folderContext.fileEntries[targetIndex]
     if (!targetEntry) return
 
     // Load image metadata if not already loaded (may return null for corrupted images)
+    // This now uses batch loader internally for efficiency
     const targetImageData = await loadImageMetadata(targetEntry.path, folderContext)
 
     // Check if this navigation is still valid (no newer navigation started)
@@ -672,6 +655,7 @@ const performNavigation = async (direction: 'next' | 'prev') => {
     await updateCurrentTabImage(targetImageData, targetEntry)
 
     // Preload adjacent images for smooth navigation (non-blocking)
+    // This now uses ultra-aggressive directional preloading
     if (targetImageData) {
       preloadAdjacentImagesLazy(targetImageData, folderContext).catch(err =>
         console.warn('Preload failed:', err)
@@ -882,7 +866,7 @@ const onImageError = () => {
 let preloadTimeoutId: number | null = null
 let lastPreloadImagePath: string | null = null
 
-// Performance optimization methods with lazy loading and adaptive preloading
+// Ultra-aggressive preloading with directional intelligence
 const preloadAdjacentImagesLazy = async (currentImage: ImageData, folderContext: FolderContext) => {
   const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === currentImage.path)
   if (currentIndex === -1) return
@@ -898,57 +882,32 @@ const preloadAdjacentImagesLazy = async (currentImage: ImageData, folderContext:
     preloadTimeoutId = null
   }
 
-  // Cancel any in-flight image loads from previous navigation
-  lazyImageLoader.cancelPendingRequests()
-
   lastPreloadImagePath = currentImage.path
 
-  // Adaptive preload range based on folder size and memory
-  const PRELOAD_RANGE = getAdaptivePreloadRange(folderContext.fileEntries.length)
-  const startIndex = Math.max(0, currentIndex - PRELOAD_RANGE)
-  const endIndex = Math.min(folderContext.fileEntries.length - 1, currentIndex + PRELOAD_RANGE)
+  // Update memory manager with current position
+  const direction = directionalPreloader.getNavigationDirection()
+  memoryManager.setCurrentPosition(currentIndex, direction)
 
-  // Check memory before preloading
+  // Check memory before preloading (but don't skip - just warn)
   if (memoryManager.isMemoryUsageHigh()) {
-    console.warn('⚠️ High memory usage, skipping preload')
-    return
+    console.warn('⚠️ High memory usage detected, but continuing preload')
   }
 
-  const preloadPromises: Promise<void>[] = []
-  const preloadUrls: string[] = []
+  // Use directional preloader for intelligent preloading
+  await directionalPreloader.preloadIntelligent(
+    currentIndex,
+    folderContext.fileEntries,
+    folderContext
+  )
 
-  for (let i = startIndex; i <= endIndex; i++) {
-    if (i !== currentIndex) {
-      const entry = folderContext.fileEntries[i]
-      if (entry) {
-        // Load metadata if not already loaded
-        const loadPromise = loadImageMetadata(entry.path, folderContext).then(imageData => {
-          if (imageData && !preloadedImages.value.has(imageData.assetUrl)) {
-            preloadUrls.push(imageData.assetUrl)
-            preloadedImages.value.add(imageData.assetUrl)
-          }
-        }).catch(() => {
-          // Silently handle corrupted images during preload
-          console.warn(`Skipping corrupted image during preload: ${entry.path}`)
-        })
-
-        preloadPromises.push(loadPromise)
-      }
-    }
+  // Start background preloading worker if not already running
+  if (folderContext.fileEntries.length > 200) {
+    directionalPreloader.startBackgroundPreload(
+      currentIndex,
+      folderContext.fileEntries,
+      folderContext
+    )
   }
-
-  // Fire and forget - don't wait for metadata loading (non-blocking)
-  Promise.allSettled(preloadPromises).then(() => {
-    if (preloadUrls.length > 0) {
-      lazyImageLoader.preloadImages(preloadUrls, 'low')
-      console.log(`🖼️ Started browser-level preload for ${preloadUrls.length} images`)
-    }
-  })
-}
-
-// Adaptive preload range based on folder size and memory
-const getAdaptivePreloadRange = (): number => {
-  return 50 // Small folders - can afford more preloading
 }
 
 const cleanupTabResources = (tabId: string) => {
@@ -1062,6 +1021,9 @@ onUnmounted(() => {
   // Cleanup all managed resources
   managedResources.forEach(resource => resource.cleanup())
   managedResources.length = 0
+
+  // Stop directional preloader background workers
+  directionalPreloader.stopBackgroundPreload()
 
   // Clear all cached data
   preloadedImages.value.clear()

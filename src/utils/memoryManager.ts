@@ -9,14 +9,17 @@ export interface ResourceCleanup {
 interface CacheEntry {
   image: HTMLImageElement
   lastAccessed: number
+  position?: number // Optional position in folder for directional eviction
 }
 
 export class MemoryManager {
   private static instance: MemoryManager
   private resources: Set<ResourceCleanup> = new Set()
   private imageCache: Map<string, CacheEntry> = new Map()
-  private maxCacheSize = 100 // Increased from 50 to 100 for better performance
+  private maxCacheSize = 1000 // Massively increased from 100 to 1000 for ultra-aggressive caching
   private cleanupInterval: number | null = null
+  private currentPosition: number = -1 // Track current position for directional eviction
+  private navigationDirection: 'forward' | 'backward' | 'unknown' = 'unknown'
 
   private constructor() {
     this.startPeriodicCleanup()
@@ -45,23 +48,99 @@ export class MemoryManager {
   }
 
   /**
-   * Cache an image element for reuse (LRU eviction)
+   * Set current position for directional eviction
    */
-  cacheImage(url: string, imageElement: HTMLImageElement): void {
-    // If cache is full, evict least recently used entry
+  setCurrentPosition(position: number, direction: 'forward' | 'backward' | 'unknown' = 'unknown'): void {
+    this.currentPosition = position
+    this.navigationDirection = direction
+  }
+
+  /**
+   * Cache an image element for reuse (directional LRU eviction)
+   */
+  cacheImage(url: string, imageElement: HTMLImageElement, position?: number): void {
+    // If cache is full, evict using directional LRU
     if (this.imageCache.size >= this.maxCacheSize) {
-      this.evictLRU()
+      this.evictDirectionalLRU()
     }
 
-    // Add to cache with current timestamp
+    // Add to cache with current timestamp and optional position
     this.imageCache.set(url, {
       image: imageElement,
-      lastAccessed: Date.now()
+      lastAccessed: Date.now(),
+      position
     })
   }
 
   /**
-   * Evict the least recently used entry from cache
+   * Evict using directional LRU - never evict images ahead in navigation direction
+   */
+  private evictDirectionalLRU(): void {
+    // If we don't have position info, fall back to standard LRU
+    if (this.currentPosition === -1) {
+      this.evictLRU()
+      return
+    }
+
+    let victimKey: string | null = null
+    let victimScore = -Infinity // Higher score = better candidate for eviction
+
+    const protectionDistance = 100 // Never evict images within ±100 of current position
+
+    for (const [key, entry] of this.imageCache.entries()) {
+      // Skip if position not set
+      if (entry.position === undefined) {
+        continue
+      }
+
+      const distance = entry.position - this.currentPosition
+      const absDistance = Math.abs(distance)
+
+      // NEVER evict images within protection distance
+      if (absDistance <= protectionDistance) {
+        continue
+      }
+
+      // Calculate eviction score based on:
+      // 1. Distance from current position (farther = higher score)
+      // 2. Navigation direction (behind us = higher score)
+      // 3. Last accessed time (older = higher score)
+
+      let score = absDistance // Base score is distance
+
+      // Boost score if image is behind us in navigation direction
+      if (this.navigationDirection === 'forward' && distance < 0) {
+        score *= 2 // Images behind us are 2x more likely to be evicted
+      } else if (this.navigationDirection === 'backward' && distance > 0) {
+        score *= 2 // Images ahead of us are 2x more likely to be evicted
+      }
+
+      // Factor in age (older = slightly higher score)
+      const age = Date.now() - entry.lastAccessed
+      score += age / 1000 // Add 1 point per second of age
+
+      if (score > victimScore) {
+        victimScore = score
+        victimKey = key
+      }
+    }
+
+    // If we found a victim, evict it
+    if (victimKey) {
+      const entry = this.imageCache.get(victimKey)
+      if (entry) {
+        this.cleanupImageElement(entry.image)
+      }
+      this.imageCache.delete(victimKey)
+      console.log(`🗑️ Directional eviction: removed image at position ${entry?.position} (score: ${victimScore.toFixed(1)})`)
+    } else {
+      // No suitable victim found, fall back to standard LRU
+      this.evictLRU()
+    }
+  }
+
+  /**
+   * Evict the least recently used entry from cache (fallback method)
    */
   private evictLRU(): void {
     let oldestKey: string | null = null
@@ -191,9 +270,9 @@ export class MemoryManager {
   isMemoryUsageHigh(): boolean {
     const memory = this.getMemoryUsage()
     if (!memory) return false
-    
+
     const usageRatio = memory.used / memory.limit
-    return usageRatio > 0.8 // 80% threshold
+    return usageRatio > 0.9 // 90% threshold - increased from 80% for more aggressive caching
   }
 
   /**

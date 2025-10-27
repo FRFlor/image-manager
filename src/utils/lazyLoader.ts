@@ -22,10 +22,12 @@ export class LazyImageLoader {
   private observer: IntersectionObserver | null = null
   private loadingImages: Set<string> = new Set()
   private loadedImages: Set<string> = new Set()
+  private decodedImages: Set<string> = new Set() // Track pre-decoded images
   private requestQueue: LoadRequest[] = []
   private activeRequests: Map<LoadRequest, number> = new Map() // Map request to timestamp
   private readonly maxConcurrentRequests = 100 // Browser connection pool limit
   private readonly loadTimeout = 5000 // 5 second timeout for slow/corrupted images
+  private readonly maxDecodeCache = 200 // Keep up to 200 decoded images
 
   constructor(options: LazyLoadOptions = {}) {
     this.initializeObserver(options)
@@ -262,6 +264,67 @@ export class LazyImageLoader {
   }
 
   /**
+   * Pre-decode an image for instant display (uses Image.decode() API)
+   */
+  async decodeImage(url: string): Promise<boolean> {
+    // Skip if already decoded
+    if (this.decodedImages.has(url)) {
+      return true
+    }
+
+    try {
+      // Get cached image or create new one
+      const cachedImage = memoryManager.getCachedImage(url)
+      const img = cachedImage || new Image()
+
+      if (!cachedImage) {
+        img.src = url
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve()
+          img.onerror = () => reject(new Error('Failed to load'))
+        })
+      }
+
+      // Decode the image (prepares it for rendering)
+      if ('decode' in img) {
+        await img.decode()
+        this.decodedImages.add(url)
+
+        // Manage decode cache size
+        if (this.decodedImages.size > this.maxDecodeCache) {
+          const firstDecoded = this.decodedImages.values().next().value
+          if (firstDecoded) {
+            this.decodedImages.delete(firstDecoded)
+          }
+        }
+
+        return true
+      } else {
+        // Fallback for browsers without decode support
+        this.decodedImages.add(url)
+        return true
+      }
+    } catch (error) {
+      console.warn(`Failed to decode image: ${url}`, error)
+      return false
+    }
+  }
+
+  /**
+   * Batch pre-decode multiple images for rapid navigation
+   */
+  async decodeImageBatch(urls: string[], maxConcurrent: number = 10): Promise<void> {
+    const urlsToLoad = urls.filter(url => !this.decodedImages.has(url))
+    if (urlsToLoad.length === 0) return
+
+    // Process in batches to avoid overwhelming the browser
+    for (let i = 0; i < urlsToLoad.length; i += maxConcurrent) {
+      const batch = urlsToLoad.slice(i, i + maxConcurrent)
+      await Promise.allSettled(batch.map(url => this.decodeImage(url)))
+    }
+  }
+
+  /**
    * Preload images that are likely to be viewed soon (with throttling and deduplication)
    */
   preloadImages(urls: string[], priority: 'high' | 'low' = 'low'): Promise<void> {
@@ -325,6 +388,7 @@ export class LazyImageLoader {
   clearCache(): void {
     this.loadedImages.clear()
     this.loadingImages.clear()
+    this.decodedImages.clear()
   }
 
   /**
