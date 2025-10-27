@@ -64,8 +64,6 @@ pub struct TabGroup {
     name: String,
     color: String, // "blue" or "orange"
     order: u32,
-    #[serde(rename = "tabIds")]
-    tab_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     collapsed: Option<bool>,
 }

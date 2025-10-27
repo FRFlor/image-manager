@@ -59,13 +59,13 @@ export interface VirtualFolderContext extends FolderContext {
 
 /**
  * Represents a tab group for organizing multiple tabs
+ * Note: Tab membership is determined by TabData.groupId, not stored here
  */
 export interface TabGroup {
   id: string
   name: string // User-editable group name
   color: 'blue' | 'orange' // For top layout border colors
   order: number // Group ordering position
-  tabIds: string[] // IDs of tabs in this group (ordered)
   collapsed?: boolean // Whether group is collapsed in tree view
 }
 
@@ -106,7 +106,6 @@ export interface SessionData {
     name: string
     color: 'blue' | 'orange'
     order: number
-    tabIds: string[]
     collapsed?: boolean
   }>
   activeTabId: string | null

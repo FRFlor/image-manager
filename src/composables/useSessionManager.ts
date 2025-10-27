@@ -52,14 +52,13 @@ export function useSessionManager() {
       panOffset: tab.panOffset
     }))
 
-    // Save groups
+    // Save groups (membership encoded in sessionTabs via groupId)
     const groupsArray = Array.from(tabGroups.value.values())
     const sessionGroups = groupsArray.map(group => ({
       id: group.id,
       name: group.name,
       color: group.color,
       order: group.order,
-      tabIds: [...group.tabIds],
       collapsed: group.collapsed
     }))
 

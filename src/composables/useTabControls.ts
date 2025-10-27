@@ -95,7 +95,18 @@ export function useTabControls() {
 
     // Get the active tab to check if it's in a group
     const oldActiveTab = activeTabId.value ? tabs.value.get(activeTabId.value) : null
-    const groupId = oldActiveTab?.groupId
+
+    // Only inherit groupId if the group actually exists (prevents orphaned groupIds)
+    let groupId: string | undefined = undefined
+    if (oldActiveTab?.groupId) {
+      const group = tabGroups.value.get(oldActiveTab.groupId)
+      if (group) {
+        groupId = oldActiveTab.groupId
+        console.log(`Added new tab to group "${group.name}" after active tab`)
+      } else {
+        console.warn(`Active tab has orphaned groupId "${oldActiveTab.groupId}", not copying to new tab`)
+      }
+    }
 
     const tab: TabData = {
       id: tabId,
@@ -105,16 +116,6 @@ export function useTabControls() {
       order: getNextTabOrder(),
       isFullyLoaded: true,
       groupId: groupId
-    }
-
-    // If adding to a group, update the group's tabIds
-    if (groupId) {
-      const group = tabGroups.value.get(groupId)
-      if (group) {
-        const oldTabIndex = group.tabIds.indexOf(activeTabId.value!)
-        group.tabIds.splice(oldTabIndex + 1, 0, tabId)
-        console.log(`Added new tab to group "${group.name}" after active tab`)
-      }
     }
 
     // Set all existing tabs to inactive
@@ -361,13 +362,12 @@ export function useTabControls() {
       name,
       color,
       order: getNextTabOrder(),
-      tabIds: [...tabIds],
       collapsed: false
     }
 
     tabGroups.value.set(groupId, group)
 
-    // Assign groupId to all tabs
+    // Assign groupId to all tabs (this is the single source of truth for membership)
     tabIds.forEach(tabId => {
       const tab = tabs.value.get(tabId)
       if (tab) {
@@ -383,22 +383,39 @@ export function useTabControls() {
     const tab = tabs.value.get(tabId)
     if (!tab || !tab.groupId) return
 
-    const group = tabGroups.value.get(tab.groupId)
-    if (!group) return
+    const savedGroupId = tab.groupId
+    const group = tabGroups.value.get(savedGroupId)
 
-    const tabIndex = group.tabIds.indexOf(tabId)
-    if (tabIndex === -1) return
+    // CRITICAL: Clear groupId FIRST to prevent orphaned references
+    tab.groupId = undefined
 
-    const isInMiddle = tabIndex > 0 && tabIndex < group.tabIds.length - 1
+    // If group doesn't exist, tab had orphaned groupId - already fixed by clearing above
+    if (!group) {
+      console.log(`Tab "${tab.title}" had orphaned groupId, cleared it`)
+      return
+    }
+
+    // Get all tabs in this group (sorted by order)
+    const groupTabsSorted = sortedTabs.value.filter(t => t.groupId === savedGroupId)
+    const tabIndex = groupTabsSorted.findIndex(t => t.id === tabId)
+
+    // If tab wasn't found in group (inconsistent state), it's already cleared
+    if (tabIndex === -1) {
+      console.log(`Tab "${tab.title}" wasn't in group's tab list (inconsistent state), cleared groupId`)
+      autoDissolveSmallGroups(savedGroupId)
+      return
+    }
+
+    const isInMiddle = tabIndex > 0 && tabIndex < groupTabsSorted.length - 1
 
     if (isInMiddle) {
       // Split the group into two
-      const tabsBefore = group.tabIds.slice(0, tabIndex)
-      const tabsAfter = group.tabIds.slice(tabIndex + 1)
+      const tabsBefore = groupTabsSorted.slice(0, tabIndex).map(t => t.id)
+      const tabsAfter = groupTabsSorted.slice(tabIndex + 1).map(t => t.id)
 
       console.log(`Splitting group "${group.name}": [${tabsBefore.length}] + removed + [${tabsAfter.length}]`)
 
-      group.tabIds = tabsBefore
+      // tabsBefore keep their groupId (already set), no action needed
 
       if (tabsAfter.length > 0) {
         const newGroupName = `${group.name} (split)`
@@ -407,23 +424,23 @@ export function useTabControls() {
         autoDissolveSmallGroups(newGroup.id)
       }
 
-      autoDissolveSmallGroups(group.id)
+      autoDissolveSmallGroups(savedGroupId)
     } else {
-      group.tabIds = group.tabIds.filter(id => id !== tabId)
+      // Tab was at beginning or end - just clearing groupId is enough
       console.log(`Removed tab "${tab.title}" from ${tabIndex === 0 ? 'beginning' : 'end'} of group "${group.name}"`)
 
-      if (group.tabIds.length === 0) {
-        tabGroups.value.delete(group.id)
-        if (selectedGroupId.value === group.id) {
+      // Check if group is now empty
+      const remainingTabs = sortedTabs.value.filter(t => t.groupId === savedGroupId)
+      if (remainingTabs.length === 0) {
+        tabGroups.value.delete(savedGroupId)
+        if (selectedGroupId.value === savedGroupId) {
           selectedGroupId.value = null
         }
         console.log(`Auto-deleted empty group "${group.name}"`)
       } else {
-        autoDissolveSmallGroups(group.id)
+        autoDissolveSmallGroups(savedGroupId)
       }
     }
-
-    tab.groupId = undefined
   }
 
   const renameGroup = (groupId: string, newName: string): void => {
@@ -438,9 +455,9 @@ export function useTabControls() {
     const group = tabGroups.value.get(groupId)
     if (!group) return
 
-    group.tabIds.forEach(tabId => {
-      const tab = tabs.value.get(tabId)
-      if (tab) {
+    // Scan ALL tabs and clear any that reference this group (defensive cleanup)
+    tabs.value.forEach(tab => {
+      if (tab.groupId === groupId) {
         tab.groupId = undefined
       }
     })
@@ -457,8 +474,9 @@ export function useTabControls() {
     const group = tabGroups.value.get(groupId)
     if (!group) return
 
-    if (group.tabIds.length <= 1) {
-      console.log(`Auto-dissolving group "${group.name}" (only ${group.tabIds.length} tab remaining)`)
+    const tabCount = getGroupTabIds(groupId).length
+    if (tabCount <= 1) {
+      console.log(`Auto-dissolving group "${group.name}" (only ${tabCount} tab remaining)`)
       dissolveGroup(groupId)
     }
   }
@@ -477,15 +495,8 @@ export function useTabControls() {
     const group = tabGroups.value.get(groupId)
     if (!group) return []
 
-    const groupTabs: TabData[] = []
-    for (const tabId of group.tabIds) {
-      const tab = tabs.value.get(tabId)
-      if (tab) {
-        groupTabs.push(tab)
-      }
-    }
-
-    groupTabs.sort((a, b) => a.order - b.order)
+    // Filter all tabs by groupId and sort by order (single source of truth)
+    const groupTabs = sortedTabs.value.filter(tab => tab.groupId === groupId)
     return groupTabs.map(tab => tab.id)
   }
 
@@ -616,20 +627,16 @@ export function useTabControls() {
       if (leftTarget.groupId) {
         const leftGroupId = leftTarget.groupId
         const leftGroupTabs = allTabs.filter(tab => tab.groupId === leftGroupId)
+        // Merge: assign all left group tabs to the selected group
         leftGroupTabs.forEach(tab => {
           tab.groupId = selectedGroupId.value!
-          if (!group.tabIds.includes(tab.id)) {
-            group.tabIds.push(tab.id)
-          }
         })
         tabGroups.value.delete(leftGroupId)
         console.log(`Merged left group into "${group.name}"`)
         autoDissolveSmallGroups(selectedGroupId.value!)
       } else {
+        // Join single tab to group
         leftTarget.groupId = selectedGroupId.value!
-        if (!group.tabIds.includes(leftTarget.id)) {
-          group.tabIds.push(leftTarget.id)
-        }
         console.log(`Merged left tab "${leftTarget.title}" into "${group.name}"`)
       }
       return
@@ -657,9 +664,6 @@ export function useTabControls() {
         const group = tabGroups.value.get(leftTab.groupId)
         if (group) {
           activeTab.groupId = leftTab.groupId
-          if (!group.tabIds.includes(activeTab.id)) {
-            group.tabIds.push(activeTab.id)
-          }
           console.log(`Joined "${activeTab.title}" to group "${group.name}"`)
         }
       } else {
@@ -688,20 +692,16 @@ export function useTabControls() {
       if (rightTarget.groupId) {
         const rightGroupId = rightTarget.groupId
         const rightGroupTabs = allTabs.filter(tab => tab.groupId === rightGroupId)
+        // Merge: assign all right group tabs to the selected group
         rightGroupTabs.forEach(tab => {
           tab.groupId = selectedGroupId.value!
-          if (!group.tabIds.includes(tab.id)) {
-            group.tabIds.push(tab.id)
-          }
         })
         tabGroups.value.delete(rightGroupId)
         console.log(`Merged right group into "${group.name}"`)
         autoDissolveSmallGroups(selectedGroupId.value!)
       } else {
+        // Join single tab to group
         rightTarget.groupId = selectedGroupId.value!
-        if (!group.tabIds.includes(rightTarget.id)) {
-          group.tabIds.push(rightTarget.id)
-        }
         console.log(`Merged right tab "${rightTarget.title}" into "${group.name}"`)
       }
       return
@@ -729,9 +729,6 @@ export function useTabControls() {
         const group = tabGroups.value.get(rightTab.groupId)
         if (group) {
           activeTab.groupId = rightTab.groupId
-          if (!group.tabIds.includes(activeTab.id)) {
-            group.tabIds.push(activeTab.id)
-          }
           console.log(`Joined "${activeTab.title}" to group "${group.name}"`)
         }
       } else {
@@ -842,7 +839,7 @@ export function useTabControls() {
     const group = tabGroups.value.get(tab.groupId)
     if (!group) return null
 
-    return { groupId: group.id, groupName: group.name, tabCount: group.tabIds.length }
+    return { groupId: group.id, groupName: group.name, tabCount: getGroupTabIds(group.id).length }
   }
 
   // Clear tabs (for session restore)

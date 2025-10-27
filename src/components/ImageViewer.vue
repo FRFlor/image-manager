@@ -253,17 +253,15 @@ const selectedGroupImages = computed((): ImageData[] => {
   const group = tabGroups.value.get(selectedGroupId.value)
   if (!group) return []
 
-  // Get tabs and sort by order property to match visual tab order
+  // Get tabs using computed helper (already sorted by order)
+  const groupTabIds = getGroupTabIds(selectedGroupId.value)
   const groupTabs: TabData[] = []
-  for (const tabId of group.tabIds) {
+  for (const tabId of groupTabIds) {
     const tab = tabs.value.get(tabId)
     if (tab) {
       groupTabs.push(tab)
     }
   }
-
-  // Sort by order property (same as sortedTabs)
-  groupTabs.sort((a, b) => a.order - b.order)
 
   return groupTabs.map(tab => tab.imageData)
 })
@@ -1110,11 +1108,11 @@ const restoreFromSession = async (sessionData: SessionData) => {
           name: groupData.name,
           color: groupData.color,
           order: groupData.order,
-          tabIds: [...groupData.tabIds],
           collapsed: groupData.collapsed
         }
         tabGroups.value.set(group.id, group)
-        console.log(`  ✓ Restored group "${group.name}" (${group.color}) with ${group.tabIds.length} tabs`)
+        // Tab membership will be restored when tabs are created with their groupId
+        console.log(`  ✓ Restored group "${group.name}" (${group.color})`)
       }
 
       // Update the nextGroupColorIndex to continue from where we left off

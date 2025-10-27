@@ -183,6 +183,10 @@ Sessions save/restore open tabs, groups, and their positions:
 
 Session management is handled via `sessionService` (`src/services/sessionService.ts`).
 
+**⚠️ CRITICAL: Frontend-Backend Serialization Sync**
+- When changing session data types in TypeScript (`src/types/index.ts`), **ALWAYS update Rust structs** in `src-tauri/src/lib.rs`
+- Both `SessionData` and `TabGroup` must have matching fields with matching serde attributes
+
 ## Component Structure
 
 **Main App Flow:**
