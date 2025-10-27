@@ -30,6 +30,14 @@ const layoutPosition = ref<'invisible' | 'top' | 'tree'>('tree')
 const layoutSize = ref<'small' | 'large'>('small')
 const treeCollapsed = ref(false)
 
+// Duplicate tab detection state
+interface DuplicateTabInfo {
+  tabId: string
+  tabTitle: string
+  groupName?: string
+}
+const duplicateTabs = ref<DuplicateTabInfo[]>([])
+
 // Initialize Favourites group at module level
 if (!tabGroups.value.has(FAVOURITES_GROUP_ID)) {
   const favouritesGroup: TabGroup = {
@@ -1277,6 +1285,48 @@ export function useTabControls() {
     }
   }
 
+  // Duplicate tab detection
+  const detectDuplicateTabs = (currentTabId: string | null = null): void => {
+    const targetTabId = currentTabId || activeTabId.value
+    if (!targetTabId) {
+      duplicateTabs.value = []
+      return
+    }
+
+    const currentTab = tabs.value.get(targetTabId)
+    if (!currentTab) {
+      duplicateTabs.value = []
+      return
+    }
+
+    const currentPath = currentTab.imageData.path
+    const duplicates: DuplicateTabInfo[] = []
+
+    // Search all tabs for matching image paths
+    for (const [tabId, tab] of tabs.value) {
+      // Skip the current tab
+      if (tabId === targetTabId) continue
+
+      // Check if same image path
+      if (tab.imageData.path === currentPath) {
+        duplicates.push({
+          tabId: tab.id,
+          tabTitle: tab.title,
+          groupName: tab.groupId ? getGroupName(tab.groupId) : undefined
+        })
+      }
+    }
+
+    duplicateTabs.value = duplicates
+    if (duplicates.length > 0) {
+      console.log(`Found ${duplicates.length} duplicate tab(s) for image: ${currentTab.imageData.name}`)
+    }
+  }
+
+  const clearDuplicates = (): void => {
+    duplicateTabs.value = []
+  }
+
 
 
   return {
@@ -1361,6 +1411,11 @@ export function useTabControls() {
 
     // Window management
     openTabInNewWindow,
-    openGroupInNewWindow
+    openGroupInNewWindow,
+
+    // Duplicate tab detection
+    duplicateTabs,
+    detectDuplicateTabs,
+    clearDuplicates
   }
 }

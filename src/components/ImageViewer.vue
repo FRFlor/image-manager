@@ -78,6 +78,20 @@
           <span class="folder-position" v-if="currentFolderSize > 1">
             {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
           </span>
+
+          <!-- Duplicate Tabs Notice -->
+          <div v-if="duplicateTabs.length > 0" class="duplicate-tabs-notice">
+            <span class="duplicate-label">Also open in:</span>
+            <button
+              v-for="(dup, index) in duplicateTabs"
+              :key="dup.tabId"
+              @click="switchToTab(dup.tabId)"
+              class="duplicate-link"
+              :title="dup.groupName ? `${dup.tabTitle} (${dup.groupName})` : dup.tabTitle"
+            >
+              {{ index + 1 }}
+            </button>
+          </div>
         </div>
         <div class="navigation-controls">
           <button @click="previousImage" :disabled="currentFolderSize <= 1" class="nav-btn"
@@ -170,7 +184,10 @@ const {
   joinWithRight,
   setNextGroupColorIndex,
   isImageFavourited,
-  toggleFavourite
+  toggleFavourite,
+  duplicateTabs,
+  detectDuplicateTabs,
+  clearDuplicates
 } = useTabControls()
 
 const {
@@ -223,6 +240,9 @@ const navigationSequenceId = ref(0)
 
 // Track if we're currently switching tabs to avoid changing shortcut context
 const isSwitchingTabs = ref(false)
+
+// Duplicate tab detection timer
+let duplicateDetectionTimerId: number | null = null
 
 const imageElement = ref<HTMLImageElement>()
 
@@ -291,6 +311,26 @@ watch(isZoomLocked, (locked) => {
 watch(fitMode, (mode) => {
   if (!isSwitchingTabs.value && mode !== 'fit-to-window') {
     setShortcutContext('image-pan')
+  }
+})
+
+// Duplicate tab detection with 3-second delay
+watch(activeTabId, () => {
+  // Clear any existing timer
+  if (duplicateDetectionTimerId !== null) {
+    clearTimeout(duplicateDetectionTimerId)
+    duplicateDetectionTimerId = null
+  }
+
+  // Clear duplicates immediately when switching tabs
+  clearDuplicates()
+
+  // Start new 3-second timer if there's an active tab
+  if (activeTabId.value) {
+    duplicateDetectionTimerId = setTimeout(() => {
+      detectDuplicateTabs(activeTabId.value)
+      duplicateDetectionTimerId = null
+    }, 3000) as unknown as number
   }
 })
 
@@ -1030,6 +1070,12 @@ onUnmounted(() => {
   // Stop directional preloader background workers
   directionalPreloader.stopBackgroundPreload()
 
+  // Clear duplicate detection timer
+  if (duplicateDetectionTimerId !== null) {
+    clearTimeout(duplicateDetectionTimerId)
+    duplicateDetectionTimerId = null
+  }
+
   // Clear all cached data
   preloadedImages.value.clear()
   tabFolderContexts.value.clear()
@@ -1440,6 +1486,49 @@ defineExpose({
 .folder-position {
   font-size: 12px;
   color: #666;
+}
+
+/* Duplicate Tabs Notice */
+.duplicate-tabs-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.duplicate-label {
+  color: #999;
+  font-size: 11px;
+}
+
+.duplicate-link {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: #404040;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.duplicate-link:hover {
+  background: #505050;
+  border-color: #007bff;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+}
+
+.duplicate-link:active {
+  transform: translateY(0);
 }
 
 .navigation-controls {
