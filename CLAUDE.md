@@ -32,24 +32,49 @@ pnpm build
 pnpm cache:clear
 ```
 
+## Code Quality Principles
+
+**CRITICAL: Read this section before making ANY changes to the codebase.**
+
+### 1. Avoid Redundant Implementation
+- **ALWAYS search for existing functionality before implementing anything new**
+- Check composables, utils, services, and components for reusable code
+- If similar logic exists, refactor and reuse it instead of duplicating
+- Example: Before adding image loading logic, check if `lazyLoader.ts` or `memoryManager.ts` already handles it
+
+### 2. Delete Clutter and Unnecessary Code
+- **Remove unused imports, variables, functions, and components immediately**
+- Delete commented-out code blocks (use git history if needed)
+- If a feature is removed, delete ALL associated code (components, types, utils)
+- Simplify complex conditionals and remove redundant checks
+
+### 3. Extract Logic from Large Files
+- **Strive to keep components below 1500 lines**
+- **Large component files could indicate missing composables or utils**
+
+### 4. Maintain Cohesive Modules
+- Each file should have a **single, clear responsibility**
+- Group related functions in the same module
+- Use descriptive file and function names that indicate purpose
+- Keep related types close to where they're used
+
 ## Architecture Overview
 
 ### State Management Philosophy
 
-The app is transitioning to a **composables-based architecture** with shared state to minimize prop drilling and emit chains. The pattern is:
+The app uses a **composables-based architecture** with shared state to minimize prop drilling and emit chains. The pattern is:
 
 1. **Composables export shared reactive state** (refs, computed, Maps)
 2. **Components import and use composables directly** (minimal props/emits)
-3. **State is centralized** in composables like `useTabControls()`
+3. **State is centralized** in composables for reusability
 
 **Current composables:**
 - `useTabControls()` (`src/composables/useTabControls.ts`) - Manages all tab state, groups, layout preferences, and operations
 
-**Future composables** (as needed):
-- Image loading and caching logic
-- Zoom and pan state management
-- Keyboard shortcut handling
-- Session management
+**When to create a new composable:**
+- When state needs to be shared across multiple components
+- When component logic exceeds ~100 lines and can be extracted
+- When the same logic pattern is duplicated in 2+ places
 
 ### Frontend-Backend Communication
 
@@ -204,33 +229,6 @@ This pattern eliminates the need to pass tab state via props or coordinate updat
 
 Shortcuts are centralized in `src/config/keyboardShortcuts.ts`:
 
-**Image Navigation:**
-- `←` / `→` or `A` / `D` - Previous/Next image in folder
-- `Enter` - Open next image in new tab
-
-**Tab Management:**
-- `Ctrl/Cmd + T` - New tab
-- `Ctrl/Cmd + W` or `Esc` - Close tab
-- `Shift + ←` / `→` or `Shift + A` / `D` - Switch tabs
-- `Ctrl/Cmd + Tab` / `Ctrl/Cmd + Shift + Tab` - Switch tabs
-
-**Tab Reordering (Smart):**
-- `Alt + ←` / `→` or `Alt + A` / `D` - Move tab/group left/right
-- `↑` / `↓` - Move tab/group up/down (alternative)
-
-**Tab Grouping:**
-- `Ctrl/Cmd + ←` / `→` or `Ctrl/Cmd + A` / `D` - Join with left/right tab or merge groups
-- `,` / `.` - Join with left/right (no modifiers)
-
-**Zoom:**
-- `Ctrl/Cmd + +/-` - Zoom in/out
-- `Ctrl/Cmd + 0` - Reset zoom
-- `Ctrl/Cmd + /` - Toggle fit mode
-- Mouse wheel - Zoom
-
-**Session:**
-- `Ctrl/Cmd + Shift + S` - Manually save auto-session (testing)
-
 ## File System Paths
 
 **Image Loading:**
@@ -307,29 +305,67 @@ All core types are in `src/types/index.ts`:
 - All commands are `async` and return `Result<T, String>` for error handling
 - Metadata cache uses `rusqlite` with WAL mode for concurrent access
 
+## Development Workflow
+
+**BEFORE implementing ANY feature, follow this checklist:**
+
+1. **Search for existing solutions** (5 minutes can save hours of duplicate work):
+   - Use Grep to search for similar function names, keywords, or patterns
+   - Check `src/composables/`, `src/utils/`, and `src/services/` for reusable code
+   - Review `src/types/index.ts` for existing type definitions
+   - Look for TODO comments or incomplete implementations
+
+2. **Plan extraction and cleanup**:
+   - Identify what can be reused vs. what's truly new
+   - If a component will exceed ~300 lines, plan to extract logic into composables/utils
+   - List any dead code that should be removed alongside your changes
+
+3. **Implement with minimal duplication**:
+   - Refactor existing code if it's close to what you need
+   - Create small, focused functions/composables rather than large monolithic ones
+   - Delete unused code as you go, not as an afterthought
+
+4. **Clean up immediately**:
+   - Remove unused imports (TypeScript will warn you)
+   - Delete any commented-out code
+   - Remove debug console.logs
+   - Simplify complex conditionals
+
 ## Common Development Patterns
 
 **Adding a new Tauri command:**
-1. Define function in `src-tauri/src/lib.rs` with `#[tauri::command]`
-2. Add to `invoke_handler!` in `run()` function
-3. Call from frontend with `invoke<ReturnType>('command_name', { params })`
+1. **Search first**: Check if a similar command exists in `src-tauri/src/lib.rs`
+2. Define function with `#[tauri::command]` attribute
+3. Add to `invoke_handler!` in `run()` function
+4. Call from frontend with `invoke<ReturnType>('command_name', { params })`
 
 **Adding a keyboard shortcut:**
-1. Add entry to `src/config/keyboardShortcuts.ts`
-2. Implement action in `ImageViewer.vue:handleKeyDown()` switch statement
-3. No need to modify multiple files - single source of truth
+1. **Search first**: Check `src/config/keyboardShortcuts.ts` for conflicts
+2. Add entry to `keyboardShortcuts.ts`
+3. Implement action in `ImageViewer.vue:handleKeyDown()` switch statement
+4. No need to modify multiple files - single source of truth
 
 **Creating a new composable:**
-1. Create file in `src/composables/` (e.g., `useImageLoader.ts`)
-2. Export shared reactive state at module level (outside function)
-3. Export composable function that returns state + methods
-4. Import and use in components without props/emits
-5. **Pattern**: Centralize state to avoid prop drilling
+1. **Check first**: Does similar state/logic exist in another composable?
+2. If yes, extend existing composable; if no, create new file in `src/composables/`
+3. Export shared reactive state at module level (outside function)
+4. Export composable function that returns state + methods
+5. Keep focused - if composable handles >3 concerns, split it
+6. **Pattern**: Centralize state to avoid prop drilling
 
 **Adding tab/group functionality:**
-1. Add method to `useTabControls()` composable
-2. Expose method in composable's return object
-3. Use method directly in components (no emit chains needed)
+1. **Always check `useTabControls()` first** - don't duplicate tab logic
+2. Add method to `useTabControls()` composable
+3. Expose method in composable's return object
+4. Use method directly in components (no emit chains needed)
+
+**Extracting logic from large components:**
+1. **Trigger**: Component exceeds ~300 lines or has multiple concerns
+2. **UI rendering** → keep in component
+3. **State management** → extract to composable (e.g., `useZoomPan.ts`)
+4. **Calculations/transforms** → extract to utils (e.g., `imageUtils.ts`)
+5. **Business logic** → extract to services (e.g., `sessionService.ts`)
+6. **Example**: If `ImageViewer.vue` handles zoom/pan in 100+ lines, create `useZoomPan()` composable
 
 **Memory optimization:**
 - Keep `fileEntries` as lightweight objects (no full ImageData)
