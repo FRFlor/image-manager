@@ -393,6 +393,7 @@ defineExpose({
 .tree-item {
   display: flex;
   align-items: center;
+  text-align: left;
   gap: 8px;
   padding: 8px 12px;
   cursor: pointer;
