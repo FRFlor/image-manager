@@ -23,7 +23,7 @@ export class LazyImageLoader {
   private loadingImages: Set<string> = new Set()
   private loadedImages: Set<string> = new Set()
   private requestQueue: LoadRequest[] = []
-  private activeRequests = 0
+  private activeRequests: Map<LoadRequest, number> = new Map() // Map request to timestamp
   private readonly maxConcurrentRequests = 100 // Browser connection pool limit
   private readonly loadTimeout = 5000 // 5 second timeout for slow/corrupted images
 
@@ -130,12 +130,68 @@ export class LazyImageLoader {
   }
 
   /**
+   * Select active requests to abort based on priority and age
+   * Priority 1: Oldest low-priority requests
+   * Priority 2: Remaining low-priority requests
+   * Priority 3: Oldest high-priority requests
+   *
+   * Returns up to 10 requests, prioritizing low-priority, but ensures at least 5 if needed
+   */
+  private selectRequestsToAbort(): LoadRequest[] {
+    const activeRequestsArray = Array.from(this.activeRequests.entries())
+      .map(([request, timestamp]) => ({ request, timestamp }))
+
+    // Separate by priority and sort by age (oldest first)
+    const lowPriority = activeRequestsArray
+      .filter(item => item.request.priority === 'low')
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(item => item.request)
+
+    const highPriority = activeRequestsArray
+      .filter(item => item.request.priority === 'high')
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(item => item.request)
+
+    const toAbort: LoadRequest[] = []
+
+    // If we have >= 10 low-priority requests, abort exactly 10
+    if (lowPriority.length >= 10) {
+      return lowPriority.slice(0, 10)
+    }
+
+    // Otherwise, abort all low-priority
+    toAbort.push(...lowPriority)
+
+    // If we still need more to reach minimum 5, add high-priority (oldest first)
+    const needed = Math.max(0, 5 - toAbort.length)
+    if (needed > 0) {
+      toAbort.push(...highPriority.slice(0, needed))
+    }
+
+    return toAbort
+  }
+
+  /**
    * Process the next request in the queue
    */
   private processQueue(): void {
-    // Don't start new requests if we're at capacity
-    if (this.activeRequests >= this.maxConcurrentRequests || this.requestQueue.length === 0) {
+    // If no queued requests, nothing to do
+    if (this.requestQueue.length === 0) {
       return
+    }
+
+    // If at capacity, abort old/low-priority requests to make room
+    if (this.activeRequests.size >= this.maxConcurrentRequests) {
+      const requestsToAbort = this.selectRequestsToAbort()
+
+      for (const request of requestsToAbort) {
+        request.abortController.abort()
+        this.activeRequests.delete(request)
+        this.loadingImages.delete(request.url)
+        request.reject(new Error(`Request aborted to make room for higher priority: ${request.url}`))
+      }
+
+      console.log(`🚫 Aborted ${requestsToAbort.length} requests to make room for new high-priority requests`)
     }
 
     // Sort queue by priority (high priority first)
@@ -148,10 +204,12 @@ export class LazyImageLoader {
     const request = this.requestQueue.shift()
     if (!request) return
 
-    this.activeRequests++
+    // Track active request with timestamp
+    this.activeRequests.set(request, Date.now())
+
     this.loadImageWithTimeout(request)
       .finally(() => {
-        this.activeRequests--
+        this.activeRequests.delete(request)
         this.processQueue() // Process next request
       })
   }
