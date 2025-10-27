@@ -24,7 +24,7 @@ export class LazyImageLoader {
   private loadedImages: Set<string> = new Set()
   private requestQueue: LoadRequest[] = []
   private activeRequests = 0
-  private readonly maxConcurrentRequests = 6 // Browser connection pool limit
+  private readonly maxConcurrentRequests = 100 // Browser connection pool limit
   private readonly loadTimeout = 5000 // 5 second timeout for slow/corrupted images
 
   constructor(options: LazyLoadOptions = {}) {

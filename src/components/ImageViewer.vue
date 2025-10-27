@@ -947,26 +947,8 @@ const preloadAdjacentImagesLazy = async (currentImage: ImageData, folderContext:
 }
 
 // Adaptive preload range based on folder size and memory
-const getAdaptivePreloadRange = (folderSize: number): number => {
-  // Check memory usage
-  const memoryUsage = memoryManager.getMemoryUsage()
-  if (memoryUsage) {
-    const usageRatio = memoryUsage.used / memoryUsage.limit
-    if (usageRatio > 0.7) {
-      return 2 // Very conservative when memory is high
-    }
-  }
-
-  // Adjust based on folder size
-  if (folderSize > 5000) {
-    return 3 // Very large folders
-  } else if (folderSize > 1000) {
-    return 5 // Large folders (default for user's choice)
-  } else if (folderSize > 500) {
-    return 7 // Medium folders
-  } else {
-    return 10 // Small folders - can afford more preloading
-  }
+const getAdaptivePreloadRange = (): number => {
+  return 50 // Small folders - can afford more preloading
 }
 
 const cleanupTabResources = (tabId: string) => {

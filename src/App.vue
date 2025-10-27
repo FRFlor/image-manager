@@ -289,7 +289,7 @@ const handleOpenImageRequest = async () => {
       loadedImages.set(selectedPath, transformedImageData) // Add the selected image
 
       // Load adjacent images for better UX
-      const PRELOAD_RANGE = 2
+      const PRELOAD_RANGE = 50
       const startIndex = Math.max(0, selectedIndex - PRELOAD_RANGE)
       const endIndex = Math.min(imageFileEntries.length - 1, selectedIndex + PRELOAD_RANGE)
 
