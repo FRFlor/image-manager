@@ -330,7 +330,7 @@ watch(activeTabId, () => {
     duplicateDetectionTimerId = setTimeout(() => {
       detectDuplicateTabs(activeTabId.value)
       duplicateDetectionTimerId = null
-    }, 3000) as unknown as number
+    }, 500) as unknown as number
   }
 })
 
