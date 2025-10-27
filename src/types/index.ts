@@ -64,7 +64,7 @@ export interface VirtualFolderContext extends FolderContext {
 export interface TabGroup {
   id: string
   name: string // User-editable group name
-  color: 'blue' | 'orange' // For top layout border colors
+  color: 'blue' | 'orange' | 'gold' // For top layout border colors (gold is for Favourites)
   order: number // Group ordering position
   collapsed?: boolean // Whether group is collapsed in tree view
 }
@@ -104,7 +104,7 @@ export interface SessionData {
   groups?: Array<{
     id: string
     name: string
-    color: 'blue' | 'orange'
+    color: 'blue' | 'orange' | 'gold'
     order: number
     collapsed?: boolean
   }>

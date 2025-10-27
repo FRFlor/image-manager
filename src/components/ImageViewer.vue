@@ -54,6 +54,11 @@
                 : `translate(${panOffset.x}px, ${panOffset.y}px)`
           }" @load="onImageLoad" @error="onImageError" @dragstart.prevent />
 
+        <!-- Favourite Star Indicator -->
+        <div v-if="activeImage && isCurrentImageFavourited" class="favourite-star">
+          ⭐
+        </div>
+
       </div>
 
       <!-- Zoom Controls -->
@@ -163,7 +168,9 @@ const {
   getGroupTabIds,
   joinWithLeft,
   joinWithRight,
-  setNextGroupColorIndex
+  setNextGroupColorIndex,
+  isImageFavourited,
+  toggleFavourite
 } = useTabControls()
 
 const {
@@ -290,6 +297,12 @@ watch(fitMode, (mode) => {
 const isImageCorrupted = computed(() => {
   // Image is corrupted if we have a file entry but no valid assetUrl (empty string indicates corrupted)
   return currentFileEntry.value !== null && activeImage.value !== null && activeImage.value.assetUrl === ''
+})
+
+// Check if current image is favourited
+const isCurrentImageFavourited = computed(() => {
+  if (!activeImage.value) return false
+  return isImageFavourited(activeImage.value.path)
 })
 
 // Helper function to scroll the active tab into view (centered)
@@ -987,6 +1000,7 @@ const keyboardActions: KeyboardActions = {
   resetZoom,
   toggleFitMode,
   panImageBy,
+  toggleFavourite,
   saveAutoSession: () => saveSession('auto')
 }
 
@@ -1373,6 +1387,28 @@ defineExpose({
   color: #ff6b6b !important;
 }
 
+/* Favourite Star Indicator */
+.favourite-star {
+  position: absolute;
+  top: 30px;
+  right: 30px;
+  font-size: 48px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  z-index: 10;
+  animation: starPulse 2s ease-in-out infinite;
+}
+
+@keyframes starPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.95;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
 
 .info-bar {
   display: flex;

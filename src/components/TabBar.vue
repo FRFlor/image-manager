@@ -572,6 +572,15 @@ defineExpose({
   background: #2d2215;
 }
 
+.tree-group-header.group-gold {
+  border-left-color: #FFD700;
+}
+
+.tree-group-header.group-gold.active {
+  border-left-color: #FFA500;
+  background: #2d2515;
+}
+
 .group-collapse-btn {
   background: none;
   border: none;
@@ -732,6 +741,10 @@ defineExpose({
 
 .tab.group-orange {
   border-top: 3px solid #ff8c00;
+}
+
+.tab.group-gold {
+  border-top: 3px solid #FFD700;
 }
 
 .tab-controls {
@@ -956,6 +969,15 @@ defineExpose({
   background: #2d2215;
 }
 
+.tree-group-header.group-gold {
+  border-left-color: #FFD700;
+}
+
+.tree-group-header.group-gold.active {
+  border-left-color: #FFA500;
+  background: #2d2515;
+}
+
 .group-collapse-btn {
   background: none;
   border: none;
@@ -1129,6 +1151,10 @@ defineExpose({
 
 .tab.group-orange {
   border-top: 3px solid #ff8c00;
+}
+
+.tab.group-gold {
+  border-top: 3px solid #FFD700;
 }
 
 .tab-controls {

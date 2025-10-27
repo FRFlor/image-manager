@@ -1,6 +1,9 @@
 import { ref, computed } from 'vue'
 import type { TabData, ImageData, FolderContext, TabGroup } from '../types'
 
+// CONSTANTS
+export const FAVOURITES_GROUP_ID = 'favourites'
+
 // SHARED STATE
 
 // Reactive state
@@ -29,10 +32,31 @@ const treeCollapsed = ref(false)
 
 
 export function useTabControls() {
+  // Initialize Favourites group if it doesn't exist
+  if (!tabGroups.value.has(FAVOURITES_GROUP_ID)) {
+    const favouritesGroup: TabGroup = {
+      id: FAVOURITES_GROUP_ID,
+      name: 'Favourites',
+      color: 'gold',
+      order: -1, // Ensures it's always first
+      collapsed: false
+    }
+    tabGroups.value.set(FAVOURITES_GROUP_ID, favouritesGroup)
+  }
 
   // Computed properties
   const sortedTabs = computed(() => {
-    return Array.from(tabs.value.values()).sort((a, b) => a.order - b.order)
+    // Sort tabs, ensuring favourites group tabs always come first
+    const allTabs = Array.from(tabs.value.values())
+    const favouritesTabs = allTabs.filter(tab => tab.groupId === FAVOURITES_GROUP_ID)
+    const otherTabs = allTabs.filter(tab => tab.groupId !== FAVOURITES_GROUP_ID)
+
+    // Sort each group by order
+    favouritesTabs.sort((a, b) => a.order - b.order)
+    otherTabs.sort((a, b) => a.order - b.order)
+
+    // Favourites first, then others
+    return [...favouritesTabs, ...otherTabs]
   })
 
   const activeTab = computed(() => {
@@ -406,15 +430,17 @@ export function useTabControls() {
   }
 
   // Group management functions
-  const createGroup = (name: string, tabIds: string[]): TabGroup => {
+  const createGroup = (name: string, tabIds: string[], color?: 'blue' | 'orange' | 'gold'): TabGroup => {
     const groupId = `group-${Date.now()}`
-    const color: 'blue' | 'orange' = nextGroupColorIndex % 2 === 0 ? 'blue' : 'orange'
-    nextGroupColorIndex++
+    const groupColor: 'blue' | 'orange' | 'gold' = color || (nextGroupColorIndex % 2 === 0 ? 'blue' : 'orange')
+    if (!color) {
+      nextGroupColorIndex++
+    }
 
     const group: TabGroup = {
       id: groupId,
       name,
-      color,
+      color: groupColor,
       order: getNextTabOrder(),
       collapsed: false
     }
@@ -498,6 +524,12 @@ export function useTabControls() {
   }
 
   const renameGroup = (groupId: string, newName: string): void => {
+    // Prevent renaming the Favourites group
+    if (groupId === FAVOURITES_GROUP_ID) {
+      console.warn('Cannot rename the Favourites group')
+      return
+    }
+
     const group = tabGroups.value.get(groupId)
     if (!group) return
 
@@ -506,6 +538,12 @@ export function useTabControls() {
   }
 
   const dissolveGroup = (groupId: string): void => {
+    // Prevent dissolving the Favourites group
+    if (groupId === FAVOURITES_GROUP_ID) {
+      console.warn('Cannot dissolve the Favourites group')
+      return
+    }
+
     const group = tabGroups.value.get(groupId)
     if (!group) return
 
@@ -525,6 +563,11 @@ export function useTabControls() {
   }
 
   const autoDissolveSmallGroups = (groupId: string): void => {
+    // Never auto-dissolve the Favourites group
+    if (groupId === FAVOURITES_GROUP_ID) {
+      return
+    }
+
     const group = tabGroups.value.get(groupId)
     if (!group) return
 
@@ -535,7 +578,7 @@ export function useTabControls() {
     }
   }
 
-  const getGroupColor = (groupId: string): 'blue' | 'orange' | null => {
+  const getGroupColor = (groupId: string): 'blue' | 'orange' | 'gold' | null => {
     const group = tabGroups.value.get(groupId)
     return group ? group.color : null
   }
@@ -552,6 +595,85 @@ export function useTabControls() {
     // Filter all tabs by groupId and sort by order (single source of truth)
     const groupTabs = sortedTabs.value.filter(tab => tab.groupId === groupId)
     return groupTabs.map(tab => tab.id)
+  }
+
+  // Favourites management functions
+  const isImageFavourited = (imagePath: string): boolean => {
+    // Check if any tab in the favourites group has this image path
+    const favouritesTabs = Array.from(tabs.value.values()).filter(tab => tab.groupId === FAVOURITES_GROUP_ID)
+    return favouritesTabs.some(tab => tab.imageData.path === imagePath)
+  }
+
+  const toggleFavourite = (): void => {
+    if (!activeTabId.value) {
+      console.warn('No active tab to favourite')
+      return
+    }
+
+    const activeTab = tabs.value.get(activeTabId.value)
+    if (!activeTab) return
+
+    const imagePath = activeTab.imageData.path
+
+    // Check if image is already favourited
+    if (isImageFavourited(imagePath)) {
+      // Unfavourite: Find and close the tab with this image in favourites group
+      const favouritesTabs = Array.from(tabs.value.values()).filter(tab =>
+        tab.groupId === FAVOURITES_GROUP_ID && tab.imageData.path === imagePath
+      )
+
+      if (favouritesTabs.length > 0) {
+        const tabToRemove = favouritesTabs[0]
+        if (tabToRemove) {
+          // Just remove from group (which will auto-dissolve if needed, but favourites is protected)
+          tabToRemove.groupId = undefined
+          // Delete the tab entirely from favourites
+          tabs.value.delete(tabToRemove.id)
+          console.log(`Unfavourited image: ${activeTab.imageData.name}`)
+        }
+      }
+    } else {
+      // Favourite: Create a clone tab in favourites group
+      const tabId = `tab-${Date.now()}`
+
+      // Get folder context from active tab
+      const folderContext = tabFolderContexts.value.get(activeTabId.value)
+      if (!folderContext) {
+        console.warn('No folder context available for favouriting')
+        return
+      }
+
+      // Find the highest order in favourites group
+      const favouritesTabs = Array.from(tabs.value.values()).filter(tab => tab.groupId === FAVOURITES_GROUP_ID)
+      const maxFavouritesOrder = favouritesTabs.length > 0
+        ? Math.max(...favouritesTabs.map(tab => tab.order))
+        : -1
+
+      const favouriteTab: TabData = {
+        id: tabId,
+        title: activeTab.imageData.name,
+        imageData: activeTab.imageData,
+        isActive: false,
+        order: maxFavouritesOrder + 1,
+        isFullyLoaded: true,
+        groupId: FAVOURITES_GROUP_ID,
+        zoomLevel: activeTab.zoomLevel,
+        fitMode: activeTab.fitMode,
+        panOffset: activeTab.panOffset
+      }
+
+      tabs.value.set(tabId, favouriteTab)
+
+      // Clone the folder context for the new tab
+      const clonedFolderContext: FolderContext = {
+        fileEntries: folderContext.fileEntries,
+        loadedImages: new Map(folderContext.loadedImages),
+        folderPath: folderContext.folderPath
+      }
+      tabFolderContexts.value.set(tabId, clonedFolderContext)
+
+      console.log(`Favourited image: ${activeTab.imageData.name}`)
+    }
   }
 
   const selectGroupHeader = (groupId: string): void => {
@@ -894,6 +1016,9 @@ export function useTabControls() {
     const tab = tabs.value.get(contextMenuTabId.value)
     if (!tab || !tab.groupId) return
 
+    // Don't allow renaming the Favourites group
+    if (tab.groupId === FAVOURITES_GROUP_ID) return
+
     const group = tabGroups.value.get(tab.groupId)
     if (!group) return
 
@@ -925,6 +1050,9 @@ export function useTabControls() {
 
     const tab = tabs.value.get(contextMenuTabId.value)
     if (!tab || !tab.groupId) return null
+
+    // Don't allow dissolving the Favourites group
+    if (tab.groupId === FAVOURITES_GROUP_ID) return null
 
     const group = tabGroups.value.get(tab.groupId)
     if (!group) return null
@@ -1112,6 +1240,9 @@ export function useTabControls() {
     joinWithRight,
     setNextGroupColorIndex,
 
+    // Favourites management
+    isImageFavourited,
+    toggleFavourite,
 
     // Tab Layout,
     layoutPosition,

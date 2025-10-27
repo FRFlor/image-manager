@@ -87,6 +87,18 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Open new tab (file picker)'
   },
   {
+    key: 'f',
+    modifiers: { ctrl: true },
+    action: 'toggleFavourite',
+    description: 'Toggle favourite for current image (Ctrl+F)'
+  },
+  {
+    key: 'f',
+    modifiers: { meta: true },
+    action: 'toggleFavourite',
+    description: 'Toggle favourite for current image (Cmd+F)'
+  },
+  {
     key: 't',
     modifiers: { ctrl: true },
     action: 'createNewTab',

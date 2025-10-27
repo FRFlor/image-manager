@@ -62,7 +62,7 @@ pub struct ImageDimensions {
 pub struct TabGroup {
     id: String,
     name: String,
-    color: String, // "blue" or "orange"
+    color: String, // "blue", "orange", or "gold"
     order: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     collapsed: Option<bool>,

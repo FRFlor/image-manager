@@ -33,6 +33,9 @@ export interface KeyboardActions {
   joinWithLeft: () => void
   joinWithRight: () => void
 
+  // Favourites management
+  toggleFavourite: () => void
+
   // Zoom controls
   zoomIn: () => void
   zoomOut: () => void
@@ -201,6 +204,9 @@ export function useShortcutContext(actions?: KeyboardActions) {
           break
         case 'toggleFitMode':
           actions.toggleFitMode()
+          break
+        case 'toggleFavourite':
+          actions.toggleFavourite()
           break
         case 'saveAutoSession':
           actions.saveAutoSession()
