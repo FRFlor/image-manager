@@ -157,6 +157,18 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     action: 'moveTabLeft',
     description: 'Move tab/group left (gaming style)'
   },
+  {
+    key: "s",
+    modifiers: { alt: true },
+    action: "moveTabRight",
+    description: "Move tab/group right (gaming style)"
+  },
+  {
+    key: "w",
+    modifiers: { alt: true },
+    action: "moveTabLeft",
+    description: "Move tab/group left (gaming style)"
+  },
 
   // Tab Grouping (Ctrl+Left/Right to join tabs into groups)
   {
