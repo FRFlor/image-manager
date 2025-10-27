@@ -84,6 +84,7 @@
           </button>
         </div>
       </div>
+      <div class="mini-info-bar" v-else>{{ currentImageIndex + 1 }} of {{ currentFolderSize }}</div>
     </div>
 
     <!-- Group Grid Preview -->
@@ -1435,6 +1436,14 @@ defineExpose({
   align-items: center;
   padding: 12px 20px;
   background: #2d2d2d;
+  border-top: 1px solid #404040;
+  flex-shrink: 0;
+}
+
+.mini-info-bar {
+  padding: 2px 10px;
+  background: #2d2d2d;
+  font-size: 10px;
   border-top: 1px solid #404040;
   flex-shrink: 0;
 }
