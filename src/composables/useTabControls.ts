@@ -891,6 +891,9 @@ export function useTabControls() {
     if (!group) return
 
     group.collapsed = !group.collapsed
+    if(group.collapsed) {
+      selectGroupHeader(groupId)
+    }
     console.log(`Group ${groupId} ${group.collapsed ? 'collapsed' : 'expanded'}`)
   }
 
