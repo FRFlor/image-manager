@@ -158,16 +158,16 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Move tab/group left (gaming style)'
   },
   {
-    key: "s",
+    key: 's',
     modifiers: { alt: true },
-    action: "moveTabRight",
-    description: "Move tab/group right (gaming style)"
+    action: 'moveTabRight',
+    description: 'Move tab/group right (gaming style)'
   },
   {
-    key: "w",
+    key: 'w',
     modifiers: { alt: true },
-    action: "moveTabLeft",
-    description: "Move tab/group left (gaming style)"
+    action: 'moveTabLeft',
+    description: 'Move tab/group left (gaming style)'
   },
 
   // Tab Grouping (Ctrl+Left/Right to join tabs into groups)
@@ -310,10 +310,10 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: KeyboardShortcut
   const modifiers = shortcut.modifiers || {}
 
   return (
-    (!!event.ctrlKey === !!modifiers.ctrl) &&
-    (!!event.shiftKey === !!modifiers.shift) &&
-    (!!event.altKey === !!modifiers.alt) &&
-    (!!event.metaKey === !!modifiers.meta)
+      (!!event.ctrlKey === !!modifiers.ctrl) &&
+      (!!event.shiftKey === !!modifiers.shift) &&
+      (!!event.altKey === !!modifiers.alt) &&
+      (!!event.metaKey === !!modifiers.meta)
   )
 }
 
