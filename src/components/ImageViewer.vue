@@ -116,6 +116,32 @@ const onImageError = () => {
   overflow: auto;
 }
 
+/* Slim dark scrollbars (WebKit: Chrome, Edge, Safari) */
+.image-container.scrollable::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.image-container.scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.image-container.scrollable::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+.image-container.scrollable::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Firefox scrollbar styling */
+.image-container.scrollable {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+/* Panning and dragging states */
 .image-container.pannable {
   cursor: grab;
 }
