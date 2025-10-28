@@ -272,7 +272,14 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
 
   // Fullscreen Mode
   {
-    key: 'F11',
+    key: 'Enter',
+    modifiers: { meta: true },
+    action: 'toggleFullscreen',
+    description: 'Toggle fullscreen mode (F11)'
+  },
+  {
+    key: 'Enter',
+    modifiers: { ctrl: true },
     action: 'toggleFullscreen',
     description: 'Toggle fullscreen mode (F11)'
   },
