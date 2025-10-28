@@ -278,13 +278,19 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Toggle fullscreen mode'
   },
   {
-    key: 'Dead',
+    key: 'Enter',
+    modifiers: { ctrl: true },
+    action: 'toggleFullscreen',
+    description: 'Toggle fullscreen mode'
+  },
+  {
+    key: ' ',
     modifiers: { meta: true },
     action: 'toggleFullscreen',
     description: 'Toggle fullscreen mode'
   },
   {
-    key: 'Enter',
+    key: ' ',
     modifiers: { ctrl: true },
     action: 'toggleFullscreen',
     description: 'Toggle fullscreen mode'
