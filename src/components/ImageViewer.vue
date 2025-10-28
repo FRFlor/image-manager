@@ -116,10 +116,10 @@ const onImageError = () => {
   overflow: auto;
 }
 
-/* Slim dark scrollbars (WebKit: Chrome, Edge, Safari) */
+/* Ultra-slim dark scrollbars (WebKit: Chrome, Edge, Safari) */
 .image-container.scrollable::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 .image-container.scrollable::-webkit-scrollbar-track {
@@ -127,18 +127,18 @@ const onImageError = () => {
 }
 
 .image-container.scrollable::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.25);
   border-radius: 10px;
 }
 
 .image-container.scrollable::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.45);
 }
 
 /* Firefox scrollbar styling */
 .image-container.scrollable {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
 }
 
 /* Panning and dragging states */
