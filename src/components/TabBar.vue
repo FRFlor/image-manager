@@ -110,10 +110,7 @@
         <div class="context-menu-separator"></div>
       </template>
 
-      <template v-if="contextMenuTabId && tabs.get(contextMenuTabId)?.groupId">
-        <div class="context-menu-item" @click="handleContextMenuRenameGroup">
-          Rename Group...
-        </div>
+      <template v-if="contextMenuTabId">
         <div class="context-menu-item" @click="handleContextMenuRemoveFromGroup">
           Remove from Group{{ selectionCount > 1 ? ` (${selectionCount} tabs)` : '' }}
         </div>

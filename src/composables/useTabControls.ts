@@ -562,13 +562,14 @@ export function useTabControls() {
 
   const removeTabFromGroup = (tabId: string): void => {
     const tab = tabs.value.get(tabId)
-    if (!tab || !tab.groupId) return
-
+    if (!tab) return
     const savedGroupId = tab.groupId
-    const group = tabGroups.value.get(savedGroupId)
-
-    // CRITICAL: Clear groupId FIRST to prevent orphaned references
     tab.groupId = undefined
+
+    if (!savedGroupId) {
+      return
+    }
+    const group = tabGroups.value.get(savedGroupId)
 
     // If group doesn't exist, tab had orphaned groupId - already fixed by clearing above
     if (!group) {
@@ -1208,10 +1209,6 @@ export function useTabControls() {
     // If the clicked tab is in the selection, return all selected tabs that have a groupId
     if (selectedTabIds.value.has(contextMenuTabId.value) && selectedTabIds.value.size > 1) {
       const tabsToRemove = Array.from(selectedTabIds.value)
-        .filter(tabId => {
-          const tab = tabs.value.get(tabId)
-          return tab && tab.groupId
-        })
       return tabsToRemove.length > 0 ? tabsToRemove : null
     }
 
