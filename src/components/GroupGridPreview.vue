@@ -8,7 +8,15 @@
         class="group-name-input"
         placeholder="Group name"
         spellcheck="false" />
-      <span class="image-count">{{ images.length }} {{ images.length === 1 ? 'image' : 'images' }}</span>
+      <div class="header-right">
+        <button
+          @click="sortTabsAlphabetically"
+          class="sort-button"
+          title="Sort tabs alphabetically">
+          Sort A-Z
+        </button>
+        <span class="image-count">{{ images.length }} {{ images.length === 1 ? 'image' : 'images' }}</span>
+      </div>
     </div>
 
     <!-- Reorder Controls (shown when an image is selected) -->
@@ -74,7 +82,7 @@ const emit = defineEmits<{
 }>()
 
 // Get favourites functions from composable
-const { isImageFavourited, toggleFavouriteForTab } = useTabControls()
+const { isImageFavourited, toggleFavouriteForTab, sortGroupTabsAlphabetically } = useTabControls()
 
 // State
 const selectedImageId = ref<string | null>(null)
@@ -114,6 +122,15 @@ const handleImageError = (event: Event) => {
 // Check if an image is favourited
 const isImageInFavourites = (imagePath: string): boolean => {
   return isImageFavourited(imagePath)
+}
+
+// Sort tabs alphabetically
+const sortTabsAlphabetically = () => {
+  // Need to get groupId from the first tab
+  if (props.tabIds.length === 0) return
+
+  // Call the composable function to sort the group
+  sortGroupTabsAlphabetically(props.tabIds)
 }
 
 // Handle keyboard shortcuts
@@ -166,6 +183,34 @@ onUnmounted(() => {
   align-items: center;
   padding: 2rem 2rem 1rem 2rem;
   border-bottom: 1px solid #333;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sort-button {
+  padding: 0.5rem 1rem;
+  background: #444;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.sort-button:hover {
+  background: #555;
+  transform: translateY(-1px);
+}
+
+.sort-button:active {
+  transform: translateY(0);
 }
 
 .reorder-controls {

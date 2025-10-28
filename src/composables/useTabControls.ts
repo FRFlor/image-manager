@@ -1409,7 +1409,30 @@ export function useTabControls() {
     duplicateTabs.value = []
   }
 
+  // Sort group tabs alphabetically by title
+  const sortGroupTabsAlphabetically = (tabIds: string[]): void => {
+    if (tabIds.length === 0) return
 
+    // Get all the tabs
+    const tabsToSort = tabIds
+      .map(id => tabs.value.get(id))
+      .filter((tab): tab is TabData => tab !== undefined)
+
+    if (tabsToSort.length === 0) return
+
+    // Sort by title (case-insensitive)
+    tabsToSort.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+
+    // Get the minimum order from the original tabs to maintain position in overall tab list
+    const minOrder = Math.min(...tabsToSort.map(t => t.order))
+
+    // Reassign order values sequentially
+    tabsToSort.forEach((tab, index) => {
+      tab.order = minOrder + index
+    })
+
+    console.log(`Sorted ${tabsToSort.length} tabs alphabetically`)
+  }
 
   return {
     // State
@@ -1500,6 +1523,9 @@ export function useTabControls() {
     // Duplicate tab detection
     duplicateTabs,
     detectDuplicateTabs,
-    clearDuplicates
+    clearDuplicates,
+
+    // Sort group tabs
+    sortGroupTabsAlphabetically
   }
 }
