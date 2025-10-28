@@ -21,6 +21,8 @@ export interface KeyboardActions {
   // Tab management
   nextTab: () => void
   previousTab: () => void
+  nextGroup: () => void
+  previousGroup: () => void
   openImageInNewTab: () => void
   createNewTab: () => void
   closeCurrentTab: () => void
@@ -174,6 +176,12 @@ export function useShortcutContext(actions?: KeyboardActions) {
           break
         case 'previousTab':
           actions.previousTab()
+          break
+        case 'nextGroup':
+          actions.nextGroup()
+          break
+        case 'previousGroup':
+          actions.previousGroup()
           break
         case 'openImageInNewTab':
           actions.openImageInNewTab()

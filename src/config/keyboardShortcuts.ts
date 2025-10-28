@@ -73,6 +73,30 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     action: 'previousTab',
     description: 'Switch to previous tab (gaming style)'
   },
+  {
+    key: 'ArrowLeft',
+    modifiers: { ctrl: true },
+    action: 'previousGroup',
+    description: 'Switch to previous group header or non-grouped-tab'
+  },
+  {
+    key: 'ArrowRight',
+    modifiers: { ctrl: true },
+    action: 'nextGroup',
+    description: 'Switch to next group header or non-grouped-tab'
+  },
+  {
+    key: 'a',
+    modifiers: { ctrl: true },
+    action: 'previousGroup',
+    description: 'Switch to previous group header or non-grouped-tab'
+  },
+  {
+    key: 'd',
+    modifiers: { ctrl: true },
+    action: 'nextGroup',
+    description: 'Switch to next group header or non-grouped-tab'
+  },
 
   // Tab Creation and Management
   {
@@ -171,30 +195,6 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
   },
 
   // Tab Grouping (Ctrl+Left/Right to join tabs into groups)
-  {
-    key: 'ArrowLeft',
-    modifiers: { ctrl: true },
-    action: 'joinWithLeft',
-    description: 'Join with left tab/group or merge into group'
-  },
-  {
-    key: 'ArrowRight',
-    modifiers: { ctrl: true },
-    action: 'joinWithRight',
-    description: 'Join with right tab/group or merge into group'
-  },
-  {
-    key: 'a',
-    modifiers: { ctrl: true },
-    action: 'joinWithLeft',
-    description: 'Join with left tab/group (gaming style)'
-  },
-  {
-    key: 'd',
-    modifiers: { ctrl: true },
-    action: 'joinWithRight',
-    description: 'Join with right tab/group (gaming style)'
-  },
   {
     key: ',', // <
     action: 'joinWithLeft',

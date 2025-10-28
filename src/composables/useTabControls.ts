@@ -287,6 +287,101 @@ export function useTabControls() {
   const switchToNextTab = () => switchToTabDelta(1);
   const switchToPreviousTab = () => switchToTabDelta(-1);
 
+  const switchToNextGroup = () => {
+    const items = treeViewItems.value
+    if (items.length === 0) return
+
+    // Find current position
+    let currentIndex = -1
+    if (selectedGroupId.value) {
+      currentIndex = items.findIndex(item => item.type === 'group' && item.groupId === selectedGroupId.value)
+    } else if (activeTabId.value) {
+      currentIndex = items.findIndex(item => item.type === 'tab' && item.tab.id === activeTabId.value)
+    }
+
+    // Start from next position
+    const startIndex = currentIndex + 1
+
+    // Search forward for next group or ungrouped tab
+    for (let i = startIndex; i < items.length; i++) {
+      const item = items[i]
+      if (!item) continue
+
+      if (item.type === 'group') {
+        selectGroupHeader(item.groupId)
+        console.log(`Switched to group: "${getGroupName(item.groupId)}"`)
+        return
+      } else if (item.type === 'tab' && !item.tab.groupId) {
+        switchToTab(item.tab.id)
+        console.log(`Switched to ungrouped tab: "${item.tab.title}"`)
+        return
+      }
+    }
+
+    // Wrap around to beginning
+    for (let i = 0; i < startIndex && i < items.length; i++) {
+      const item = items[i]
+      if (!item) continue
+
+      if (item.type === 'group') {
+        selectGroupHeader(item.groupId)
+        console.log(`Switched to group (wrapped): "${getGroupName(item.groupId)}"`)
+        return
+      } else if (item.type === 'tab' && !item.tab.groupId) {
+        switchToTab(item.tab.id)
+        console.log(`Switched to ungrouped tab (wrapped): "${item.tab.title}"`)
+        return
+      }
+    }
+  }
+
+  const switchToPreviousGroup = () => {
+    const items = treeViewItems.value
+    if (items.length === 0) return
+
+    // Find current position
+    let currentIndex = -1
+    if (selectedGroupId.value) {
+      currentIndex = items.findIndex(item => item.type === 'group' && item.groupId === selectedGroupId.value)
+    } else if (activeTabId.value) {
+      currentIndex = items.findIndex(item => item.type === 'tab' && item.tab.id === activeTabId.value)
+    }
+
+    // Start from previous position
+    const startIndex = currentIndex === -1 ? items.length - 1 : currentIndex - 1
+
+    // Search backward for previous group or ungrouped tab
+    for (let i = startIndex; i >= 0; i--) {
+      const item = items[i]
+      if (!item) continue
+
+      if (item.type === 'group') {
+        selectGroupHeader(item.groupId)
+        console.log(`Switched to group: "${getGroupName(item.groupId)}"`)
+        return
+      } else if (item.type === 'tab' && !item.tab.groupId) {
+        switchToTab(item.tab.id)
+        console.log(`Switched to ungrouped tab: "${item.tab.title}"`)
+        return
+      }
+    }
+
+    // Wrap around to end
+    for (let i = items.length - 1; i > startIndex; i--) {
+      const item = items[i]
+      if (!item) continue
+
+      if (item.type === 'group') {
+        selectGroupHeader(item.groupId)
+        console.log(`Switched to group (wrapped): "${getGroupName(item.groupId)}"`)
+        return
+      } else if (item.type === 'tab' && !item.tab.groupId) {
+        switchToTab(item.tab.id)
+        console.log(`Switched to ungrouped tab (wrapped): "${item.tab.title}"`)
+        return
+      }
+    }
+  }
 
   const closeCurrentTab = () => {
     if (activeTabId.value) {
@@ -1371,6 +1466,8 @@ export function useTabControls() {
     closeTab,
     switchToNextTab,
     switchToPreviousTab,
+    switchToNextGroup,
+    switchToPreviousGroup,
     closeCurrentTab,
     clearTabs,
 
