@@ -77,8 +77,11 @@ const imageContainer = ref<HTMLElement>()
 const viewerContainer = ref<HTMLElement>()
 const imageElement = ref<HTMLImageElement>()
 
+const emit = defineEmits(['image-clicked'])
+
 // Event handlers
 const handleImageMouseDown = (event: MouseEvent) => {
+  emit('image-clicked')
   handleZoomMouseDown(event)
 }
 

@@ -23,6 +23,7 @@
         :imageData="activeImage"
         :isCorrupted="isImageCorrupted"
         :currentFileEntry="currentFileEntry"
+        @image-clicked="setShortcutContext('image-pan')"
         class="image-viewer-component"
       />
 
