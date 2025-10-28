@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
-import ImageViewer from './components/ImageViewer.vue'
+import ImageWorkspace from './components/ImageWorkspace.vue'
 import LoadingIndicator from './components/LoadingIndicator.vue'
 import type { ApplicationState, LoadingState, FolderContext, ImageData, FileEntry } from './types'
 import { useUIConfigurations } from './composables/useUIConfigurations'
@@ -21,7 +21,7 @@ const loadingState = ref<LoadingState>({
   isLoading: true,
   operation: 'Initializing application...'
 })
-const imageViewer = ref<InstanceType<typeof ImageViewer>>()
+const imageViewer = ref<InstanceType<typeof ImageWorkspace>>()
 
 onMounted(async () => {
   
@@ -356,12 +356,12 @@ const handleOpenImageRequest = async () => {
   <div class="app">
     <main>
       <div class="app-content">
-        <!-- Image Viewer -->
-        <ImageViewer
+        <!-- Image Workspace -->
+        <ImageWorkspace
           ref="imageViewer"
           @openImageRequested="handleOpenImageRequest"
         />
-        
+
         <!-- Loading Indicator -->
         <LoadingIndicator
           :loading="loadingState.isLoading"
@@ -371,7 +371,7 @@ const handleOpenImageRequest = async () => {
           :show-progress="loadingState.progress !== undefined"
           :fullscreen="true"
         />
-        
+
 
 
       </div>

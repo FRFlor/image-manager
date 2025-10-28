@@ -1,0 +1,1521 @@
+<template>
+  <div class="image-workspace" :class="'layout-' + currentLayout">
+    <TabBar
+      @tabSwitched="switchToTab"
+      @tabClosed="closeTab"
+      @openNewImage="openNewImage"
+      ref="tabBarRef"
+    />
+
+    <!-- Content Area with Image and Controls -->
+    <div class="content-area" ref="contentAreaRef" v-if="activeImage || isImageCorrupted">
+      <!-- Favourite Star Indicator (absolute positioned over image) -->
+      <div v-if="activeImage && isCurrentImageFavourited" class="favourite-star">
+        ⭐
+      </div>
+
+      <!-- Zoom Controls (absolute positioned) -->
+      <ZoomControls v-if="activeImage && areZoomAndNavigationControlsVisible"/>
+
+      <!-- Pure Image Viewer (scrollable when zoomed) -->
+      <ImageViewer
+        :imageData="activeImage"
+        :isCorrupted="isImageCorrupted"
+        :currentFileEntry="currentFileEntry"
+        class="image-viewer-component"
+      />
+
+      <!-- Image Info Bar (fixed at bottom) -->
+      <div class="info-bar" v-if="areZoomAndNavigationControlsVisible">
+        <div class="image-info">
+          <span class="image-name">{{ currentFileEntry?.name || activeImage?.name || 'Unknown' }}</span>
+          <span class="image-details" v-if="!isImageCorrupted && activeImage">
+            {{ activeImage.dimensions.width }}×{{ activeImage.dimensions.height }} •
+            {{ formatFileSize(activeImage.fileSize) }}
+          </span>
+          <span class="image-details corrupted-status" v-else-if="isImageCorrupted">
+            Corrupted • Unable to load
+          </span>
+          <span class="folder-position" v-if="currentFolderSize > 1">
+            {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
+          </span>
+
+          <!-- Duplicate Tabs Notice -->
+          <div v-if="duplicateTabs.length > 0" class="duplicate-tabs-notice">
+            <span class="duplicate-label">Also open in:</span>
+            <button
+              v-for="(dup, index) in duplicateTabs"
+              :key="dup.tabId"
+              @click="switchToTab(dup.tabId)"
+              class="duplicate-link"
+              :title="dup.groupName ? `${dup.tabTitle} (${dup.groupName})` : dup.tabTitle"
+            >
+              {{ index + 1 }}
+            </button>
+          </div>
+        </div>
+        <div class="navigation-controls">
+          <button @click="previousImage" :disabled="currentFolderSize <= 1" class="nav-btn"
+            title="Previous image (←)">
+            ← Prev
+          </button>
+          <button @click="nextImage" :disabled="currentFolderSize <= 1" class="nav-btn" title="Next image (→)">
+            Next →
+          </button>
+        </div>
+      </div>
+      <div class="mini-info-bar" v-else>
+        {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
+
+        <div v-if="duplicateTabs.length > 0" class="duplicate-tabs-notice mini">
+          <button
+              v-for="dup in duplicateTabs"
+              :key="dup.tabId"
+              @click="switchToTab(dup.tabId)"
+              class="duplicate-link"
+              :title="dup.groupName ? `${dup.tabTitle} (${dup.groupName})` : dup.tabTitle"
+          >
+            {{ dup.groupName === 'Favourites' ? '⭐' : '🔘' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Group Grid Preview -->
+    <div v-else-if="selectedGroupId && selectedGroupImages.length > 0" class="group-preview-container">
+      <GroupGridPreview
+        :groupName="getGroupName(selectedGroupId)"
+        :images="selectedGroupImages"
+        :tabIds="getGroupTabIds(selectedGroupId)"
+        @imageSelected="handleGroupImageSelected"
+        @nameChanged="(newName) => renameGroup(selectedGroupId!, newName)"
+        @imageReordered="(direction, tabId) => moveTab(direction, tabId)" />
+    </div>
+
+    <!-- Empty State -->
+    <div v-else class="empty-viewer">
+      <div class="empty-content">
+        <h3>No image selected</h3>
+        <p>Open an image to start viewing</p>
+        <button @click="openNewImage" class="open-btn">
+          Open Image
+        </button>
+      </div>
+    </div>
+
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import type { ImageData, TabData, SessionData, FolderContext, FileEntry, TabGroup } from '../types'
+import GroupGridPreview from './GroupGridPreview.vue'
+import TabBar from './TabBar.vue'
+import ZoomControls from './ZoomControls.vue'
+import ImageViewer from './ImageViewer.vue'
+import { memoryManager, ManagedResource } from '../utils/memoryManager'
+import { lazyImageLoader } from '../utils/lazyLoader'
+import { batchMetadataLoader } from '../utils/batchMetadataLoader'
+import { directionalPreloader } from '../utils/directionalPreloader'
+import { useTabControls } from '../composables/useTabControls'
+import { useZoomControls } from '../composables/useZoomControls'
+import { useShortcutContext, type KeyboardActions } from '../composables/useShortcutContext'
+import { useUIConfigurations } from "../composables/useUIConfigurations.ts"
+import { useSessionManager } from '../composables/useSessionManager'
+import { getDirectoryPath } from '../utils/pathUtils'
+
+// Props and Emits
+const emit = defineEmits<{
+  openImageRequested: []
+}>()
+
+
+const {
+  tabs,
+  activeTabId,
+  tabFolderContexts,
+  tabGroups,
+  selectedGroupId,
+  activeTab,
+  sortedTabs,
+  currentLayout,
+  layoutPosition,
+  layoutSize,
+  treeCollapsed,
+  openTab,
+  switchToTab: switchToTabBase,
+  closeTab: closeTabBase,
+  switchToNextTab: switchToNextTabBase,
+  switchToPreviousTab: switchToPreviousTabBase,
+  closeCurrentTab: closeCurrentTabBase,
+  clearTabs,
+  moveTab,
+  moveTabRight: moveTabRightBase,
+  moveTabLeft: moveTabLeftBase,
+  renameGroup,
+  getGroupName,
+  getGroupTabIds,
+  joinWithLeft,
+  joinWithRight,
+  setNextGroupColorIndex,
+  isImageFavourited,
+  toggleFavourite,
+  duplicateTabs,
+  detectDuplicateTabs,
+  clearDuplicates
+} = useTabControls()
+
+const {
+  fitMode,
+  isZoomLocked,
+  zoomIn,
+  zoomOut,
+  resetZoom,
+
+  loadZoomAndPanStateFromTab,
+  saveZoomAndPanStateIntoTab,
+
+  toggleFitMode,
+  handleMouseMove,
+  handleMouseUp,
+  panImageBy,
+  resetImageView,
+} = useZoomControls()
+
+const { areZoomAndNavigationControlsVisible } = useUIConfigurations()
+
+const {
+  saveSession,
+  loadSession
+} = useSessionManager()
+
+// Reactive state
+const currentFolderImages = ref<ImageData[]>([])
+const contentAreaRef = ref<HTMLElement>()
+const tabBarRef = ref<InstanceType<typeof TabBar>>()
+
+// Lazy loading state
+const currentFileEntry = ref<FileEntry | null>(null) // Track current file even if corrupted
+
+// Performance and memory management
+const managedResources: ManagedResource[] = []
+const preloadedImages = ref<Set<string>>(new Set())
+
+// Navigation state for handling rapid navigation
+const navigationInProgress = ref(false)
+const pendingNavigationDirection = ref<'next' | 'prev' | null>(null)
+const navigationQueue = ref<Array<'next' | 'prev'>>([])
+const MAX_NAVIGATION_QUEUE_DEPTH = 50 // Massively increased from 3 to 50 for rapid arrow key holds
+const navigationSequenceId = ref(0)
+
+// Track if we're currently switching tabs to avoid changing shortcut context
+const isSwitchingTabs = ref(false)
+
+// Duplicate tab detection timer
+let duplicateDetectionTimerId: number | null = null
+
+// Computed properties
+const activeImage = computed(() => {
+  if (!activeTabId.value) return null
+  return activeTab.value?.imageData || null
+})
+
+const currentImageIndex = computed(() => {
+  if (!activeTabId.value) return -1
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  if (!folderContext) return -1
+
+  // Use currentFileEntry if available (works for corrupted images too)
+  if (currentFileEntry.value) {
+    return folderContext.fileEntries.findIndex(entry => entry.path === currentFileEntry.value!.path)
+  }
+
+  // Fallback to activeImage
+  if (activeImage.value) {
+    return folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
+  }
+
+  return -1
+})
+
+const currentFolderSize = computed(() => {
+  if (!activeTabId.value) return 0
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  return folderContext ? folderContext.fileEntries.length : 0
+})
+
+// Get images for the selected group
+const selectedGroupImages = computed((): ImageData[] => {
+  if (!selectedGroupId.value) return []
+
+  const group = tabGroups.value.get(selectedGroupId.value)
+  if (!group) return []
+
+  // Get tabs using computed helper (already sorted by order)
+  const groupTabIds = getGroupTabIds(selectedGroupId.value)
+  const groupTabs: TabData[] = []
+  for (const tabId of groupTabIds) {
+    const tab = tabs.value.get(tabId)
+    if (tab) {
+      groupTabs.push(tab)
+    }
+  }
+
+  return groupTabs.map(tab => tab.imageData)
+})
+
+watch(activeTabId, () => {
+  resetShortcutContext()
+})
+
+watch(isZoomLocked, (locked) => {
+  if (locked) {
+    resetShortcutContext()
+  }
+})
+
+// When fitMode changes due to user interaction (not tab switching),
+// enter image-pan mode if we're not in fit-to-window
+watch(fitMode, (mode) => {
+  if (!isSwitchingTabs.value && mode !== 'fit-to-window') {
+    setShortcutContext('image-pan')
+  }
+})
+
+// Duplicate tab detection with 3-second delay
+watch(activeTabId, () => {
+  // Clear any existing timer
+  if (duplicateDetectionTimerId !== null) {
+    clearTimeout(duplicateDetectionTimerId)
+    duplicateDetectionTimerId = null
+  }
+
+  // Clear duplicates immediately when switching tabs
+  clearDuplicates()
+
+  // Start new 3-second timer if there's an active tab
+  if (activeTabId.value) {
+    duplicateDetectionTimerId = setTimeout(() => {
+      detectDuplicateTabs(activeTabId.value)
+      duplicateDetectionTimerId = null
+    }, 500) as unknown as number
+  }
+})
+
+const isImageCorrupted = computed(() => {
+  // Image is corrupted if we have a file entry but no valid assetUrl (empty string indicates corrupted)
+  return currentFileEntry.value !== null && activeImage.value !== null && activeImage.value.assetUrl === ''
+})
+
+// Check if current image is favourited
+const isCurrentImageFavourited = computed(() => {
+  if (!activeImage.value) return false
+  return isImageFavourited(activeImage.value.path)
+})
+
+// Helper function to scroll the active tab into view (centered)
+const scrollActiveTabIntoView = () => {
+  if (!activeTabId.value) return
+
+  // Use nextTick to ensure the DOM has updated with the active class
+  nextTick(() => {
+    // Handle tree modes (vertical scrolling)
+    if (layoutPosition.value === 'tree' && tabBarRef.value?.treeItemsContainer) {
+      const treeItemsContainer = tabBarRef.value.treeItemsContainer
+      const activeTreeItem = treeItemsContainer.querySelector('.tree-item.active') as HTMLElement
+      if (!activeTreeItem) return
+
+      const containerHeight = treeItemsContainer.offsetHeight
+      const itemTop = activeTreeItem.offsetTop
+      const itemHeight = activeTreeItem.offsetHeight
+
+      // Calculate scroll position to center the active item vertically
+      const scrollPosition = itemTop - (containerHeight / 2) + (itemHeight / 2)
+
+      // Smooth scroll to the calculated position
+      treeItemsContainer.scrollTo({
+        top: scrollPosition,
+        behavior: 'smooth'
+      })
+    }
+    // Handle horizontal tab bar modes
+    else if (tabBarRef.value?.tabContainer) {
+      const tabContainer = tabBarRef.value.tabContainer
+      const activeTabElement = tabContainer.querySelector('.tab.active') as HTMLElement
+      if (!activeTabElement) return
+
+      const containerWidth = tabContainer.offsetWidth
+      const tabLeft = activeTabElement.offsetLeft
+      const tabWidth = activeTabElement.offsetWidth
+
+      // Calculate scroll position to center the active tab horizontally
+      const scrollPosition = tabLeft - (containerWidth / 2) + (tabWidth / 2)
+
+      // Smooth scroll to the calculated position
+      tabContainer.scrollTo({
+        left: scrollPosition,
+        behavior: 'smooth'
+      })
+    }
+  })
+}
+
+// Helper function to load image metadata on-demand (now uses batch loader)
+const loadImageMetadata = async (filePath: string, folderContext: FolderContext): Promise<ImageData | null> => {
+  // Use batch metadata loader for efficient loading
+  return await batchMetadataLoader.loadImageMetadata(filePath, folderContext)
+}
+
+
+// Methods
+const openImage = (imageData: ImageData, folderContext: FolderContext) => {
+  // Use composable to open tab
+  openTab(imageData, folderContext)
+
+  // Scroll the new tab into view
+  scrollActiveTabIntoView()
+
+  // Set current file entry
+  const fileEntry = folderContext.fileEntries.find(entry => entry.path === imageData.path)
+  currentFileEntry.value = fileEntry || null
+
+  // Update currentFolderImages with loaded images only
+  currentFolderImages.value = Array.from(folderContext.loadedImages.values())
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  // Preload adjacent images for better performance
+  preloadAdjacentImagesLazy(imageData, folderContext)
+}
+
+const switchToTab = async (tabId: string) => {
+  // Save current tab's zoom/pan state before switching
+  const saveCurrentTabState = (currentTabId: string) => {
+    const currentTab = tabs.value.get(currentTabId)
+    if (currentTab) {
+      saveZoomAndPanStateIntoTab(currentTab);
+    }
+  }
+
+  // Use composable to switch tab
+  const tab = switchToTabBase(tabId, saveCurrentTabState)
+  if (!tab) return
+
+  // Scroll the active tab into view (centered)
+  scrollActiveTabIntoView()
+
+  // Restore zoom and pan state for the new tab
+  // Set flag to prevent fitMode watcher from changing shortcut context
+  isSwitchingTabs.value = true
+  loadZoomAndPanStateFromTab(tab);
+  // Reset flag after Vue processes the change
+  nextTick(() => {
+    isSwitchingTabs.value = false
+  })
+
+  // Load folder context for this tab if needed (lazy loading)
+  if (!tab.isFullyLoaded) {
+    console.log(`🔄 Loading tab on-demand: ${tab.title}`)
+    await loadFolderContextForTab(tab)
+    tab.isFullyLoaded = true
+    console.log(`✅ Tab loaded: ${tab.title}`)
+  } else {
+    // Already loaded, just update current folder images
+    await loadFolderContextForTab(tab)
+  }
+
+  // Set current file entry for the active tab
+  const folderContext = tabFolderContexts.value.get(tabId)
+  if (folderContext && tab.imageData?.path) {
+    const fileEntry = folderContext.fileEntries.find(entry => entry.path === tab.imageData.path)
+    currentFileEntry.value = fileEntry || null
+  }
+
+  // Preload adjacent images in the new tab's context
+  nextTick(() => {
+    if (folderContext && tab.imageData) {
+      preloadAdjacentImagesLazy(tab.imageData, folderContext)
+    }
+  })
+
+  // Preload adjacent tabs in background
+  preloadAdjacentTabs(tabId)
+}
+
+const loadFolderContextForTab = async (tab: TabData) => {
+  // Check if we already have folder context for this tab
+  if (tabFolderContexts.value.has(tab.id)) {
+    const folderContext = tabFolderContexts.value.get(tab.id)!
+    currentFolderImages.value = Array.from(folderContext.loadedImages.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+    return
+  }
+
+  // Load folder context for this tab's image with lazy loading
+  try {
+    const imagePath = tab.imageData.path
+    const folderPath = getDirectoryPath(imagePath)
+
+    const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
+
+    // Filter and transform to FileEntry format
+    const imageFileEntries = folderEntries
+      .filter(entry => entry.is_image)
+      .map(entry => ({
+        name: entry.name,
+        path: entry.path,
+        isDirectory: false,
+        isImage: true,
+        size: entry.size,
+        lastModified: entry.last_modified ? new Date(entry.last_modified) : undefined
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    // Create folder context with the current image already loaded
+    const loadedImages = new Map<string, ImageData>()
+    loadedImages.set(imagePath, tab.imageData)
+
+    const folderContext: FolderContext = {
+      fileEntries: imageFileEntries,
+      loadedImages,
+      folderPath
+    }
+
+    const selectedIndex = imageFileEntries.findIndex(entry => entry.path === imagePath)
+    if (selectedIndex !== -1) {
+      // Use batch loader for initial preload
+      const PRELOAD_RANGE = 10 // Balanced preload (reduced from 50)
+      const startIndex = Math.max(0, selectedIndex - PRELOAD_RANGE)
+      const endIndex = Math.min(imageFileEntries.length - 1, selectedIndex + PRELOAD_RANGE)
+
+      // Collect paths for batch loading
+      const pathsToPreload: string[] = []
+      for (let i = startIndex; i <= endIndex; i++) {
+        if (i !== selectedIndex) {
+          const entry = imageFileEntries[i]
+          if (entry) {
+            pathsToPreload.push(entry.path)
+          }
+        }
+      }
+
+      // Use batch loader for efficient parallel loading (non-blocking)
+      if (pathsToPreload.length > 0) {
+        batchMetadataLoader.loadImageMetadataBatch(pathsToPreload, folderContext);
+      }
+    }
+
+    // Store folder context for this tab
+    tabFolderContexts.value.set(tab.id, folderContext)
+    currentFolderImages.value = Array.from(folderContext.loadedImages.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    console.log(`📁 Loaded folder context for tab (${folderContext.loadedImages.size}/${imageFileEntries.length} images)`)
+  } catch (error) {
+    console.error('Failed to load folder context for tab:', error)
+    currentFolderImages.value = [tab.imageData] // Fallback to just the current image
+  }
+}
+
+const preloadAdjacentTabs = async (currentTabId: string) => {
+  // Find the current tab in sorted order
+  const sorted = sortedTabs.value
+  const currentIndex = sorted.findIndex(tab => tab.id === currentTabId)
+
+  if (currentIndex === -1) return
+
+  // Determine which tabs to preload (±2 from current)
+  const PRELOAD_TAB_RANGE = 2
+  const startIndex = Math.max(0, currentIndex - PRELOAD_TAB_RANGE)
+  const endIndex = Math.min(sorted.length - 1, currentIndex + PRELOAD_TAB_RANGE)
+
+  const tabsToPreload: TabData[] = []
+  for (let i = startIndex; i <= endIndex; i++) {
+    if (i !== currentIndex) {
+      const tab = sorted[i]
+      // Only preload if not already fully loaded
+      if (tab && !tab.isFullyLoaded) {
+        tabsToPreload.push(tab)
+      }
+    }
+  }
+
+  if (tabsToPreload.length === 0) return
+
+  // Load tabs in parallel (non-blocking)
+  const preloadPromises = tabsToPreload.map(async (tab) => {
+    try {
+      await loadFolderContextForTab(tab)
+      tab.isFullyLoaded = true
+    } catch (error) {
+      console.warn(`Failed to preload tab: ${tab.title}`, error)
+    }
+  })
+
+  // Don't await - let this happen in background
+  Promise.all(preloadPromises).catch(err => {
+    console.warn('Some tabs failed to preload:', err)
+  })
+}
+
+const closeTab = (tabId: string) => {
+  // Clean up resources for this tab
+  const cleanup = (id: string) => {
+    cleanupTabResources(id)
+  }
+
+  // Use composable to close tab
+  const newActiveTabId = closeTabBase(tabId, cleanup)
+
+  if (newActiveTabId) {
+    switchToTab(newActiveTabId)
+  } else if (newActiveTabId === null) {
+    currentFolderImages.value = []
+  }
+}
+
+const nextImage = async () => {
+  // If navigation is in progress, queue this navigation with max depth
+  if (navigationInProgress.value) {
+    // Only queue if under max depth
+    if (navigationQueue.value.length < MAX_NAVIGATION_QUEUE_DEPTH) {
+      // Optimize: if last queued is same direction, don't add duplicate
+      const lastQueued = navigationQueue.value[navigationQueue.value.length - 1]
+      if (lastQueued !== 'next') {
+        navigationQueue.value.push('next')
+      }
+    } else {
+      console.warn('⚠️ Navigation queue full, skipping request')
+    }
+    return
+  }
+
+  await performNavigation('next')
+}
+
+const previousImage = async () => {
+  // If navigation is in progress, queue this navigation with max depth
+  if (navigationInProgress.value) {
+    // Only queue if under max depth
+    if (navigationQueue.value.length < MAX_NAVIGATION_QUEUE_DEPTH) {
+      // Optimize: if last queued is same direction, don't add duplicate
+      const lastQueued = navigationQueue.value[navigationQueue.value.length - 1]
+      if (lastQueued !== 'prev') {
+        navigationQueue.value.push('prev')
+      }
+    } else {
+      console.warn('⚠️ Navigation queue full, skipping request')
+    }
+    return
+  }
+
+  await performNavigation('prev')
+}
+
+// Core navigation function with race condition prevention and directional tracking
+const performNavigation = async (direction: 'next' | 'prev') => {
+  if (!activeTabId.value) return
+
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  if (!folderContext || folderContext.fileEntries.length <= 1) return
+
+  // Mark navigation as in progress
+  navigationInProgress.value = true
+  const currentSequenceId = ++navigationSequenceId.value
+
+  try {
+    // Find current file entry index (works even if current image is corrupted)
+    let currentIndex = -1
+
+    // First try to use currentFileEntry (works for both valid and corrupted images)
+    if (currentFileEntry.value) {
+      currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === currentFileEntry.value!.path)
+    } else if (activeImage.value) {
+      // Fallback to activeImage if currentFileEntry is not set
+      currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === activeImage.value!.path)
+    }
+
+    // If we still can't find current position, default to -1 so navigation starts from beginning
+    if (currentIndex === -1) {
+      currentIndex = direction === 'next' ? -1 : 0
+    }
+
+    // Calculate target index based on direction
+    let targetIndex: number
+    if (direction === 'next') {
+      targetIndex = (currentIndex + 1) % folderContext.fileEntries.length
+    } else {
+      targetIndex = currentIndex === 0 ? folderContext.fileEntries.length - 1 : currentIndex - 1
+    }
+
+    // Track navigation for directional preloading
+    directionalPreloader.trackNavigation(targetIndex, currentIndex)
+
+    const targetEntry = folderContext.fileEntries[targetIndex]
+    if (!targetEntry) return
+
+    // Load image metadata if not already loaded (may return null for corrupted images)
+    // This now uses batch loader internally for efficiency
+    const targetImageData = await loadImageMetadata(targetEntry.path, folderContext)
+
+    // Check if this navigation is still valid (no newer navigation started)
+    if (currentSequenceId !== navigationSequenceId.value) {
+      console.log('Navigation cancelled - newer navigation in progress')
+      return
+    }
+
+    // Update tab with new image or corrupted entry
+    await updateCurrentTabImage(targetImageData, targetEntry)
+
+    // Preload adjacent images for smooth navigation (non-blocking)
+    // This now uses ultra-aggressive directional preloading
+    if (targetImageData) {
+      preloadAdjacentImagesLazy(targetImageData, folderContext).catch(err =>
+        console.warn('Preload failed:', err)
+      )
+    }
+  } finally {
+    navigationInProgress.value = false
+
+    // Process navigation queue (newer approach with max depth)
+    if (navigationQueue.value.length > 0) {
+      const nextDirection = navigationQueue.value.shift()
+      if (nextDirection) {
+        // Use nextTick to avoid deep recursion
+        nextTick(() => performNavigation(nextDirection))
+      }
+    }
+    // Fallback to old pending navigation for compatibility
+    else if (pendingNavigationDirection.value) {
+      const nextDirection = pendingNavigationDirection.value
+      pendingNavigationDirection.value = null
+      // Use nextTick to avoid deep recursion
+      nextTick(() => performNavigation(nextDirection))
+    }
+  }
+}
+
+const updateCurrentTabImage = async (newImageData: ImageData | null, fileEntry: FileEntry) => {
+  if (!activeTabId.value) return
+
+  const activeTab = tabs.value.get(activeTabId.value)
+  if (!activeTab) return
+
+  // Save current zoom/pan state before changing images
+  saveZoomAndPanStateIntoTab(activeTab)
+
+  // Update current file entry (works for both valid and corrupted images)
+  currentFileEntry.value = fileEntry
+
+  if (newImageData) {
+    // Valid image - update tab with image data
+    activeTab.imageData = newImageData
+    activeTab.title = newImageData.name
+    console.log(`Navigated to: ${newImageData.name}`)
+  } else {
+    // Corrupted image - create a placeholder ImageData with safe defaults
+    const placeholderImageData: ImageData = {
+      id: `corrupted-${fileEntry.path}`,
+      name: fileEntry.name,
+      path: fileEntry.path,
+      assetUrl: '', // Empty URL for corrupted images
+      dimensions: { width: 0, height: 0 },
+      fileSize: fileEntry.size || 0,
+      lastModified: fileEntry.lastModified || new Date()
+    }
+    activeTab.imageData = placeholderImageData
+    activeTab.title = fileEntry.name
+    console.log(`Navigated to corrupted image: ${fileEntry.name}`)
+  }
+
+  // Reset zoom and pan when changing images
+  resetImageView()
+}
+
+const openNewImage = () => {
+  console.log('🎯 openNewImage called - emitting openImageRequested')
+  emit('openImageRequested')
+}
+
+// Enhanced tab management functions
+const openImageInNewTab = async () => {
+  if (!activeTabId.value) return
+
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  if (!folderContext || folderContext.fileEntries.length <= 1) return
+
+  const currentIndex = currentImageIndex.value
+  const nextIndex = (currentIndex + 1) % folderContext.fileEntries.length
+  const nextEntry = folderContext.fileEntries[nextIndex]
+  if (!nextEntry) return
+
+  // Load next image metadata (may be null if corrupted)
+  const nextImageData = await loadImageMetadata(nextEntry.path, folderContext)
+
+  // Create proper placeholder for corrupted images
+  const imageData: ImageData = nextImageData || {
+    id: `corrupted-${nextEntry.path}`,
+    name: nextEntry.name,
+    path: nextEntry.path,
+    assetUrl: '',
+    dimensions: { width: 0, height: 0 },
+    fileSize: nextEntry.size || 0,
+    lastModified: nextEntry.lastModified || new Date()
+  }
+
+  const oldActiveTabId = activeTabId.value
+
+  // Create a NEW folder context for the new tab (deep clone to avoid shared references)
+  const currentFolderContext = tabFolderContexts.value.get(oldActiveTabId)
+  if (currentFolderContext) {
+    const newFolderContext: FolderContext = {
+      fileEntries: currentFolderContext.fileEntries,
+      loadedImages: new Map(currentFolderContext.loadedImages),
+      folderPath: currentFolderContext.folderPath
+    }
+
+    // Use composable to open the new tab
+    openTab(imageData, newFolderContext)
+
+    // Scroll the new tab into view
+    scrollActiveTabIntoView()
+
+    // Set current file entry for the new tab
+    currentFileEntry.value = nextEntry
+
+    // Update currentFolderImages
+    currentFolderImages.value = Array.from(newFolderContext.loadedImages.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    console.log(`Opened ${nextEntry.name} in new tab and switched to it`)
+  }
+}
+
+const switchToNextTab = () => {
+  const nextTabId = switchToNextTabBase()
+  if (nextTabId) {
+    switchToTab(nextTabId)
+  }
+}
+
+const switchToPreviousTab = () => {
+  const prevTabId = switchToPreviousTabBase()
+  if (prevTabId) {
+    switchToTab(prevTabId)
+  }
+}
+
+const createNewTab = () => {
+  // Open file picker to create a new tab
+  emit('openImageRequested')
+}
+
+const closeCurrentTab = () => {
+  const tabIdToClose = closeCurrentTabBase()
+  if (tabIdToClose) {
+    closeTab(tabIdToClose)
+  }
+}
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+const handleDocumentMouseDown = (event: MouseEvent) => {
+  const target = event.target instanceof Node ? event.target : null
+
+  if (target && contentAreaRef.value?.contains(target)) {
+    return
+  }
+
+  resetShortcutContext()
+}
+
+// Tab reordering wrappers (use composable)
+const moveTabRight = (tabId: string|null = null) => {
+  moveTabRightBase(tabId)
+}
+
+const moveTabLeft = (tabId: string|null = null) => {
+  moveTabLeftBase(tabId)
+}
+
+// Keep handleGroupImageSelected as it uses local switchToTab
+const handleGroupImageSelected = (imageId: string): void => {
+  // Find the tab with this image ID and switch to it
+  for (const tab of tabs.value.values()) {
+    if (tab.imageData.id === imageId) {
+      switchToTab(tab.id)
+      selectedGroupId.value = null
+      break
+    }
+  }
+}
+
+// Debouncing for preload operations
+let preloadTimeoutId: number | null = null
+let lastPreloadImagePath: string | null = null
+
+// Ultra-aggressive preloading with directional intelligence
+const preloadAdjacentImagesLazy = async (currentImage: ImageData, folderContext: FolderContext) => {
+  const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === currentImage.path)
+  if (currentIndex === -1) return
+
+  // Debouncing: If already preloading for the same image, skip
+  if (lastPreloadImagePath === currentImage.path) {
+    return
+  }
+
+  // Cancel any pending preload operations
+  if (preloadTimeoutId !== null) {
+    clearTimeout(preloadTimeoutId)
+    preloadTimeoutId = null
+  }
+
+  lastPreloadImagePath = currentImage.path
+
+  // Update memory manager with current position
+  const direction = directionalPreloader.getNavigationDirection()
+  memoryManager.setCurrentPosition(currentIndex, direction)
+
+  // Check memory before preloading (but don't skip - just warn)
+  if (memoryManager.isMemoryUsageHigh()) {
+    console.warn('⚠️ High memory usage detected, but continuing preload')
+  }
+
+  // Use directional preloader for intelligent preloading
+  await directionalPreloader.preloadIntelligent(
+    currentIndex,
+    folderContext.fileEntries,
+    folderContext
+  )
+
+  // Start background preloading worker if not already running
+  if (folderContext.fileEntries.length > 200) {
+    directionalPreloader.startBackgroundPreload(
+      currentIndex,
+      folderContext.fileEntries,
+      folderContext
+    )
+  }
+}
+
+const cleanupTabResources = (tabId: string) => {
+  const tab = tabs.value.get(tabId)
+  if (!tab) return
+
+  // Get the folder context for this tab
+  const folderContext = tabFolderContexts.value.get(tabId)
+
+  // Clean up ALL preloaded images for this tab's folder context, not just the current image
+  if (folderContext) {
+    // Remove all loaded images from this folder's context
+    for (const [, imageData] of folderContext.loadedImages.entries()) {
+      // Remove from preloaded images set
+      preloadedImages.value.delete(imageData.assetUrl)
+
+      // Remove from memory manager cache
+      memoryManager.removeCachedImage(imageData.assetUrl)
+    }
+
+    // Clear the loaded images map for this folder
+    folderContext.loadedImages.clear()
+  }
+
+  // Also remove the current tab's image
+  preloadedImages.value.delete(tab.imageData.assetUrl)
+  memoryManager.removeCachedImage(tab.imageData.assetUrl)
+
+  // Cancel any pending preload requests
+  lazyImageLoader.cancelPendingRequests()
+
+  console.log(`✅ Cleaned up all resources for tab: ${tab.title}`)
+}
+
+const optimizeMemoryUsage = () => {
+  // Check if memory usage is high
+  if (memoryManager.isMemoryUsageHigh()) {
+    console.warn('High memory usage detected, performing cleanup')
+
+    // Clear preloaded images that aren't currently visible
+    const visibleUrls = new Set<string>()
+    tabs.value.forEach(tab => {
+      visibleUrls.add(tab.imageData.assetUrl)
+    })
+
+    for (const url of preloadedImages.value) {
+      if (!visibleUrls.has(url)) {
+        memoryManager.removeCachedImage(url)
+        preloadedImages.value.delete(url)
+      }
+    }
+
+    // Force garbage collection if available
+    memoryManager.forceGarbageCollection()
+  }
+}
+
+// Zoom and pan methods are now provided by useZoomControls composable
+
+// toggleGroupCollapse is provided by the composable
+
+// Initialize keyboard shortcut handling with action callbacks
+const keyboardActions: KeyboardActions = {
+  nextImage,
+  previousImage,
+  nextTab: switchToNextTab,
+  previousTab: switchToPreviousTab,
+  openImageInNewTab,
+  createNewTab,
+  closeCurrentTab,
+  moveTabRight: () => moveTabRight(),
+  moveTabLeft: () => moveTabLeft(),
+  joinWithLeft,
+  joinWithRight,
+  zoomIn,
+  zoomOut,
+  resetZoom,
+  toggleFitMode,
+  panImageBy,
+  toggleFavourite,
+  saveAutoSession: () => saveSession('auto')
+}
+
+const { setShortcutContext, resetShortcutContext, handleKeyDown } = useShortcutContext(
+  keyboardActions
+)
+
+
+
+// Lifecycle
+onMounted(() => {
+  document.addEventListener('keydown', handleKeyDown)
+  document.addEventListener('mousedown', handleDocumentMouseDown)
+  document.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('mouseup', handleMouseUp)
+
+  // Setup memory optimization interval
+  const memoryOptimizationResource = new ManagedResource(() => {
+    clearInterval(memoryOptimizationInterval)
+  })
+  managedResources.push(memoryOptimizationResource)
+
+  const memoryOptimizationInterval = setInterval(optimizeMemoryUsage, 60000) // Every minute
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyDown)
+  document.removeEventListener('mousedown', handleDocumentMouseDown)
+  document.removeEventListener('mousemove', handleMouseMove)
+  document.removeEventListener('mouseup', handleMouseUp)
+
+  // Cleanup all managed resources
+  managedResources.forEach(resource => resource.cleanup())
+  managedResources.length = 0
+
+  // Stop directional preloader background workers
+  directionalPreloader.stopBackgroundPreload()
+
+  // Clear duplicate detection timer
+  if (duplicateDetectionTimerId !== null) {
+    clearTimeout(duplicateDetectionTimerId)
+    duplicateDetectionTimerId = null
+  }
+
+  // Clear all cached data
+  preloadedImages.value.clear()
+  tabFolderContexts.value.clear()
+})
+
+// Session management methods (now using useSessionManager composable)
+// Note: saveAutoSession removed - App.vue now calls saveSession('auto') directly from composable
+
+const restoreFromSession = async (sessionData: SessionData) => {
+  try {
+    // Clear existing tabs and groups using composable
+    clearTabs()
+    currentFolderImages.value = []
+
+    // Import invoke here to avoid unused import warning
+    const { invoke } = await import('@tauri-apps/api/core')
+
+    let activeTabIdToLoad: string | null = null
+
+    // Restore groups first (before tabs, so we can assign groupIds)
+    if (sessionData.groups && sessionData.groups.length > 0) {
+      console.log(`🎨 Restoring ${sessionData.groups.length} groups from session:`, sessionData.groups)
+      for (const groupData of sessionData.groups) {
+        const group: TabGroup = {
+          id: groupData.id,
+          name: groupData.name,
+          color: groupData.color,
+          order: groupData.order,
+          collapsed: groupData.collapsed
+        }
+        tabGroups.value.set(group.id, group)
+        // Tab membership will be restored when tabs are created with their groupId
+        console.log(`  ✓ Restored group "${group.name}" (${group.color})`)
+      }
+
+      // Update the nextGroupColorIndex to continue from where we left off
+      setNextGroupColorIndex(sessionData.groups.length)
+
+      console.log(`✅ Restored ${sessionData.groups.length} tab groups`)
+    } else {
+      console.log('ℹ️ No groups found in session data')
+    }
+
+    // Phase 1: Restore all tabs with minimal loading in parallel (just verify files exist)
+    console.log(`Loading metadata for ${sessionData.tabs.length} tabs in parallel...`)
+
+    const tabLoadPromises = sessionData.tabs.map(async (sessionTab) => {
+      try {
+        const isActiveTab = sessionTab.id === sessionData.activeTabId
+
+        // Load basic image data for all tabs (lightweight operation)
+        const imageData = await invoke<any>('read_image_file', { path: sessionTab.imagePath })
+
+        const restoredImageData: ImageData = {
+          id: imageData.id,
+          name: imageData.name,
+          path: imageData.path,
+          assetUrl: convertFileSrc(imageData.path),
+          dimensions: imageData.dimensions,
+          fileSize: imageData.file_size,
+          lastModified: new Date(imageData.last_modified)
+        }
+
+        // Create tab with restored data including zoom/pan state and groupId
+        const tab: TabData = {
+          id: sessionTab.id,
+          title: restoredImageData.name,
+          imageData: restoredImageData,
+          isActive: isActiveTab,
+          order: sessionTab.order,
+          groupId: sessionTab.groupId, // Restore group membership
+          isFullyLoaded: false, // Mark as not fully loaded yet
+          zoomLevel: sessionTab.zoomLevel,
+          fitMode: sessionTab.fitMode,
+          panOffset: sessionTab.panOffset
+        }
+
+        return { tab, isActiveTab }
+      } catch (error) {
+        console.warn(`Failed to restore image: ${sessionTab.imagePath}`, error)
+        // Return null for failed tabs
+        return null
+      }
+    })
+
+    // Wait for all tabs to load in parallel
+    const tabResults = await Promise.all(tabLoadPromises)
+
+    // Add all successfully loaded tabs to the map
+    for (const result of tabResults) {
+      if (result) {
+        tabs.value.set(result.tab.id, result.tab)
+        if (result.isActiveTab) {
+          activeTabIdToLoad = result.tab.id
+        }
+        console.log(`Restored tab (lazy): ${result.tab.title}`)
+      }
+    }
+
+    console.log(`✅ All ${tabs.value.size} tabs restored in parallel`)
+
+    // Phase 2: Fully load only the active tab (MINIMAL LOADING for fast startup)
+    if (activeTabIdToLoad && tabs.value.has(activeTabIdToLoad)) {
+      activeTabId.value = activeTabIdToLoad
+      const activeTab = tabs.value.get(activeTabIdToLoad)
+      if (activeTab) {
+        activeTab.isActive = true
+
+        // Restore zoom/pan state for the active tab
+        loadZoomAndPanStateFromTab(activeTab);
+
+        // CRITICAL: Only load folder context WITHOUT preloading adjacent images
+        // This makes session restore much faster on network drives
+        const imagePath = activeTab.imageData.path
+        const folderPath = getDirectoryPath(imagePath)
+
+        try {
+          const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
+          const imageFileEntries = folderEntries
+            .filter(entry => entry.is_image)
+            .map(entry => ({
+              name: entry.name,
+              path: entry.path,
+              isDirectory: false,
+              isImage: true,
+              size: entry.size,
+              lastModified: entry.last_modified ? new Date(entry.last_modified) : undefined
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+
+          // Create minimal folder context with only the current image
+          const loadedImages = new Map<string, ImageData>()
+          loadedImages.set(imagePath, activeTab.imageData)
+
+          const folderContext: FolderContext = {
+            fileEntries: imageFileEntries,
+            loadedImages,
+            folderPath
+          }
+
+          tabFolderContexts.value.set(activeTab.id, folderContext)
+          currentFolderImages.value = Array.from(folderContext.loadedImages.values())
+            .sort((a, b) => a.name.localeCompare(b.name))
+
+          activeTab.isFullyLoaded = true
+          console.log(`✅ Active tab loaded (minimal, no preload): ${activeTab.title}`)
+        } catch (error) {
+          console.error('Failed to load folder for active tab:', error)
+          // Still mark as loaded so we don't retry indefinitely
+          activeTab.isFullyLoaded = true
+        }
+      }
+    } else if (tabs.value.size > 0) {
+      // If the original active tab doesn't exist, activate the first available tab
+      const firstTab = Array.from(tabs.value.values())[0]
+      if (firstTab) {
+        activeTabId.value = firstTab.id
+        firstTab.isActive = true
+        firstTab.isFullyLoaded = true
+        activeTabIdToLoad = firstTab.id
+
+        // Restore zoom/pan state for the first tab
+        loadZoomAndPanStateFromTab(firstTab);
+
+        console.log(`✅ First tab activated (deferred loading): ${firstTab.title}`)
+      }
+    }
+
+    console.log(`⚡ Session restored FAST with ${tabs.value.size} tabs (minimal loading, no preload)`)
+
+    // Restore UI state (layout and controls visibility)
+    if (sessionData.layoutPosition !== undefined) {
+      layoutPosition.value = sessionData.layoutPosition
+    }
+    if (sessionData.layoutSize !== undefined) {
+      layoutSize.value = sessionData.layoutSize
+    }
+    if (sessionData.treeCollapsed !== undefined) {
+      treeCollapsed.value = sessionData.treeCollapsed
+    }
+    if (sessionData.controlsVisible !== undefined) {
+      areZoomAndNavigationControlsVisible.value = sessionData.controlsVisible
+    }
+    console.log(`✅ Restored UI state: layout=${layoutPosition.value}/${layoutSize.value}, treeCollapsed=${treeCollapsed.value}, controlsVisible=${areZoomAndNavigationControlsVisible.value}`)
+
+    // Scroll the active tab into view after restoration
+    if (activeTabIdToLoad) {
+      scrollActiveTabIntoView()
+    }
+
+    // Phase 3: Background load other tabs and preload - FULLY NON-BLOCKING
+    // This happens after the UI is already responsive
+    if (activeTabIdToLoad) {
+      // Use nextTick to ensure this happens after UI update
+      nextTick(() => {
+        // Fire and forget - background preload adjacent tabs
+        preloadAdjacentTabs(activeTabIdToLoad).catch(err => {
+          console.warn('Background tab preload failed:', err)
+        })
+      })
+    }
+  } catch (error) {
+    console.error('Failed to restore session:', error)
+    throw error
+  }
+}
+
+const loadAutoSession = async () => {
+  const result = await loadSession('auto')
+  if (result) {
+    await restoreFromSession(result.sessionData)
+    return true
+  }
+  return false
+}
+
+const saveSessionDialog = async () => {
+  const result = await saveSession('dialog')
+  return typeof result === 'string' || result === true
+}
+
+const loadSessionDialog = async () => {
+  const result = await loadSession('dialog')
+  if (result) {
+    await restoreFromSession(result.sessionData)
+    return true
+  }
+  return false
+}
+
+// Expose methods and refs for parent component
+defineExpose({
+  openImage,
+  loadAutoSession,
+  saveSessionDialog,
+  loadSessionDialog,
+  restoreFromSession
+})
+</script>
+
+<style scoped>
+.image-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a1a1a;
+  color: white;
+}
+
+/* Tree layouts - horizontal split */
+.image-workspace.layout-tree-small,
+.image-workspace.layout-tree-large {
+  flex-direction: row;
+}
+
+/* Tree-Large specific styles (only when NOT collapsed) */
+.image-workspace.layout-tree-large .tree-panel:not(.collapsed) .tree-item {
+  padding: 12px;
+  gap: 12px;
+}
+
+.image-workspace.layout-tree-large .tree-panel:not(.collapsed) .tree-item-thumbnail {
+  width: 200px;
+  height: 200px;
+}
+
+.image-workspace.layout-tree-large .tree-panel:not(.collapsed) {
+  min-width: 250px;
+  max-width: 350px;
+}
+
+/* Content Area - Contains image viewer and controls */
+.content-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Image Viewer Component - Fills available space, scrollable when zoomed */
+.image-viewer-component {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Favourite Star Indicator - Positioned over image */
+.favourite-star {
+  position: absolute;
+  top: 30px;
+  right: 20px;
+  font-size: 16px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  z-index: 10;
+  animation: starPulse 2s ease-in-out infinite;
+}
+
+.corrupted-status {
+  color: #ff6b6b !important;
+}
+
+@keyframes starPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.95;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.info-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #2d2d2d;
+  border-top: 1px solid #404040;
+  flex-shrink: 0;
+}
+
+.mini-info-bar {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  padding: 2px 10px;
+  background: #2d2d2d;
+  font-size: 10px;
+  border-top: 1px solid #404040;
+  flex-shrink: 0;
+}
+
+.image-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.image-name {
+  font-weight: 600;
+  font-size: 16px;
+  color: white;
+}
+
+.image-details {
+  font-size: 14px;
+  color: #999;
+}
+
+.folder-position {
+  font-size: 12px;
+  color: #666;
+}
+
+/* Duplicate Tabs Notice */
+.duplicate-tabs-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.duplicate-tabs-notice.mini {
+  gap: 2px;
+  margin-top: 2px;
+  font-size: 10px;
+}
+
+.duplicate-label {
+  color: #999;
+  font-size: 11px;
+}
+
+.duplicate-link {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: #404040;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.duplicate-link:hover {
+  background: #505050;
+  border-color: #007bff;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+}
+
+.duplicate-link:active {
+  transform: translateY(0);
+}
+
+.navigation-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.nav-btn {
+  padding: 8px 16px;
+  background: #404040;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: #505050;
+}
+
+.nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.group-preview-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.empty-viewer {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-content {
+  text-align: center;
+  color: #999;
+}
+
+.empty-content h3 {
+  margin: 0 0 8px 0;
+  color: white;
+  font-size: 24px;
+}
+
+.empty-content p {
+  margin: 0 0 24px 0;
+  font-size: 16px;
+}
+
+.open-btn {
+  padding: 12px 24px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s;
+}
+
+.open-btn:hover {
+  background: #0056b3;
+}
+
+@media (max-width: 768px) {
+  .info-bar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .image-info {
+    text-align: center;
+  }
+
+  .navigation-controls {
+    justify-content: center;
+  }
+}
+</style>
