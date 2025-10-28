@@ -9,7 +9,6 @@
     "core:default",
     "core:app:default",
     "core:window:default",
-    "core:window:allow-set-fullscreen",
     "fs:default",
     "fs:read-all",
     "fs:read-dirs",
