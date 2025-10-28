@@ -258,7 +258,7 @@ export function useTabControls() {
     if (start === -1) return;
 
     const isCollapsed = (tab: TabData) => {
-      if (shouldSkipCollapsedGroups) {
+      if (!shouldSkipCollapsedGroups) {
         return false;
       }
       const gid = tab.groupId;
