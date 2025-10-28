@@ -1,5 +1,5 @@
-import { ref, computed } from 'vue'
-import type { TabData, ImageData, FolderContext, TabGroup } from '../types'
+import {computed, ref} from 'vue'
+import type {FolderContext, ImageData, TabData, TabGroup} from '../types'
 
 // CONSTANTS
 export const FAVOURITES_GROUP_ID = 'favourites'
@@ -247,29 +247,46 @@ export function useTabControls() {
     }
   }
 
-  const switchToNextTab = () => {
-    const tabArray = sortedTabs.value
-    if (tabArray.length <= 1) return
+  const switchToTabDelta = (delta: number, shouldSkipCollapsedGroups: boolean = false) => {
+    const tabs = sortedTabs.value ?? [];
+    if (tabs.length <= 1) return;
 
-    const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
-    const nextIndex = (currentIndex + 1) % tabArray.length
-    const nextTab = tabArray[nextIndex]
-    if (nextTab) {
-      return nextTab.id
+    const activeId = activeTabId.value;
+    if (!activeId) return;
+
+    const start = tabs.findIndex(t => t.id === activeId);
+    if (start === -1) return;
+
+    const isCollapsed = (tab: TabData) => {
+      if (shouldSkipCollapsedGroups) {
+        return false;
+      }
+      const gid = tab.groupId;
+      return !!(gid && tabGroups.value.get(gid)?.collapsed);
+    };
+
+    // normalize delta to avoid huge jumps (e.g., ±1000)
+    const stepDirection = Math.sign(delta) || 1;
+    const maxSteps = tabs.length - 1;
+
+    for (let step = 1; step <= maxSteps; step++) {
+      const i = (start + step * stepDirection + tabs.length) % tabs.length;
+      const candidate = tabs[i];
+      if (!candidate) {
+        console.error("Failed to find tab")
+        return
+      }
+      if (!isCollapsed(candidate)) {
+        return candidate.id;
+      }
     }
-  }
 
-  const switchToPreviousTab = () => {
-    const tabArray = sortedTabs.value
-    if (tabArray.length <= 1) return
+    return;
+  };
 
-    const currentIndex = tabArray.findIndex(tab => tab.id === activeTabId.value)
-    const prevIndex = currentIndex === 0 ? tabArray.length - 1 : currentIndex - 1
-    const prevTab = tabArray[prevIndex]
-    if (prevTab) {
-      return prevTab.id
-    }
-  }
+  const switchToNextTab = () => switchToTabDelta(1);
+  const switchToPreviousTab = () => switchToTabDelta(-1);
+
 
   const closeCurrentTab = () => {
     if (activeTabId.value) {
