@@ -15,6 +15,18 @@
         ⭐
       </div>
 
+      <div v-if="duplicateTabs.length > 0" class="duplicate-tabs-notice">
+        <button
+            v-for="dup in duplicateTabs"
+            :key="dup.tabId"
+            @click="switchToTab(dup.tabId)"
+            class="duplicate-link"
+            :title="dup.groupName ? `${dup.tabTitle} (${dup.groupName})` : dup.tabTitle"
+        >
+          {{ dup.groupName === 'Favourites' ? '⭐' : '🔘' }}
+        </button>
+      </div>
+
       <!-- Zoom Controls (absolute positioned) -->
       <ZoomControls v-if="shouldShowZoomControls"/>
 
@@ -41,20 +53,6 @@
           <span class="folder-position" v-if="currentFolderSize > 1">
             {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
           </span>
-
-          <!-- Duplicate Tabs Notice -->
-          <div v-if="duplicateTabs.length > 0" class="duplicate-tabs-notice">
-            <span class="duplicate-label">Also open in:</span>
-            <button
-              v-for="(dup, index) in duplicateTabs"
-              :key="dup.tabId"
-              @click="switchToTab(dup.tabId)"
-              class="duplicate-link"
-              :title="dup.groupName ? `${dup.tabTitle} (${dup.groupName})` : dup.tabTitle"
-            >
-              {{ index + 1 }}
-            </button>
-          </div>
         </div>
         <div class="navigation-controls">
           <button @click="previousImage" :disabled="currentFolderSize <= 1" class="nav-btn"
@@ -68,18 +66,6 @@
       </div>
       <div class="mini-info-bar" v-if="shouldShowMiniInfoBar">
         {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
-
-        <div v-if="duplicateTabs.length > 0" class="duplicate-tabs-notice mini">
-          <button
-              v-for="dup in duplicateTabs"
-              :key="dup.tabId"
-              @click="switchToTab(dup.tabId)"
-              class="duplicate-link"
-              :title="dup.groupName ? `${dup.tabTitle} (${dup.groupName})` : dup.tabTitle"
-          >
-            {{ dup.groupName === 'Favourites' ? '⭐' : '🔘' }}
-          </button>
-        </div>
       </div>
     </div>
 
@@ -314,8 +300,6 @@ const shouldShowMiniInfoBar = computed(() => {
 })
 
 const shouldShowFavouriteStar = computed(() => {
-  if (!isFullscreen.value) return activeImage.value && isCurrentImageFavourited.value
-  // In fullscreen, always show the star (no hover needed)
   return activeImage.value && isCurrentImageFavourited.value
 })
 
@@ -1469,17 +1453,20 @@ defineExpose({
 
 /* Duplicate Tabs Notice */
 .duplicate-tabs-notice {
+  position: absolute;
+  bottom: 50px;
+  right: 10px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-  font-size: 12px;
-}
-
-.duplicate-tabs-notice.mini {
-  gap: 2px;
-  margin-top: 2px;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(40, 40, 40, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
   font-size: 10px;
+  z-index: 5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .duplicate-label {
@@ -1488,15 +1475,15 @@ defineExpose({
 }
 
 .duplicate-link {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   padding: 0;
-  background: #404040;
+  background: rgba(64, 64, 64, 0.8);
   color: #ccc;
-  border: 1px solid #555;
-  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   transition: all 0.2s;
   display: flex;
@@ -1505,7 +1492,7 @@ defineExpose({
 }
 
 .duplicate-link:hover {
-  background: #505050;
+  background: rgba(80, 80, 80, 0.9);
   border-color: #007bff;
   color: white;
   transform: translateY(-1px);
