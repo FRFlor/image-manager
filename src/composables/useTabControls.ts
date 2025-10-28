@@ -252,7 +252,25 @@ export function useTabControls() {
     if (tabs.length <= 1) return;
 
     const activeId = activeTabId.value;
-    if (!activeId) return;
+    if (!activeId) {
+      if (!selectedGroupId.value) {
+        return;
+      }
+
+      const firstTabOfGroup = tabs.find(tab => tab.groupId === selectedGroupId.value);
+      if (!firstTabOfGroup) {
+        return;
+      }
+      activeTabId.value =  firstTabOfGroup.id
+
+      const newDelta = delta > 0 ? delta - 1 : delta
+
+      if (newDelta === 0) {
+        return;
+      }
+
+      return switchToTabDelta(newDelta, shouldSkipCollapsedGroups)
+    }
 
     const start = tabs.findIndex(t => t.id === activeId);
     if (start === -1) return;
