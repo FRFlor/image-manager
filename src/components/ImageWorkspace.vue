@@ -152,8 +152,8 @@ const {
   closeTab: closeTabBase,
   switchToNextTab: switchToNextTabBase,
   switchToPreviousTab: switchToPreviousTabBase,
-  switchToNextGroup,
-  switchToPreviousGroup,
+  switchToNextGroup: switchToNextGroupBase,
+  switchToPreviousGroup: switchToPreviousGroupBase,
   closeCurrentTab: closeCurrentTabBase,
   clearTabs,
   moveTab,
@@ -370,14 +370,16 @@ const isCurrentImageFavourited = computed(() => {
 
 // Helper function to scroll the active tab into view (centered)
 const scrollActiveTabIntoView = () => {
-  if (!activeTabId.value) return
+  // Only scroll if either a tab or group header is selected
+  if (!activeTabId.value && !selectedGroupId.value) return
 
   // Use nextTick to ensure the DOM has updated with the active class
   nextTick(() => {
     // Handle tree modes (vertical scrolling)
     if (layoutPosition.value === 'tree' && tabBarRef.value?.treeItemsContainer) {
       const treeItemsContainer = tabBarRef.value.treeItemsContainer
-      const activeTreeItem = treeItemsContainer.querySelector('.tree-item.active') as HTMLElement
+      // Look for either an active tab or an active group header
+      const activeTreeItem = treeItemsContainer.querySelector('.tree-item.active, .tree-group-header.active') as HTMLElement
       if (!activeTreeItem) return
 
       const containerHeight = treeItemsContainer.offsetHeight
@@ -393,8 +395,8 @@ const scrollActiveTabIntoView = () => {
         behavior: 'smooth'
       })
     }
-    // Handle horizontal tab bar modes
-    else if (tabBarRef.value?.tabContainer) {
+    // Handle horizontal tab bar modes (only tabs are shown in top layout, not group headers)
+    else if (activeTabId.value && tabBarRef.value?.tabContainer) {
       const tabContainer = tabBarRef.value.tabContainer
       const activeTabElement = tabContainer.querySelector('.tab.active') as HTMLElement
       if (!activeTabElement) return
@@ -857,6 +859,20 @@ const switchToPreviousTab = () => {
   if (prevTabId) {
     switchToTab(prevTabId)
   }
+}
+
+const switchToNextGroup = () => {
+  switchToNextGroupBase()
+  nextTick(() => {
+    scrollActiveTabIntoView()
+  })
+}
+
+const switchToPreviousGroup = () => {
+  switchToPreviousGroupBase()
+  nextTick(() => {
+    scrollActiveTabIntoView()
+  })
 }
 
 const createNewTab = () => {
