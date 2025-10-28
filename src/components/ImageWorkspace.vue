@@ -1,6 +1,7 @@
 <template>
   <div class="image-workspace" :class="'layout-' + currentLayout">
     <TabBar
+      v-if="shouldShowTabBar"
       @tabSwitched="switchToTab"
       @tabClosed="closeTab"
       @openNewImage="openNewImage"
@@ -8,14 +9,14 @@
     />
 
     <!-- Content Area with Image and Controls -->
-    <div class="content-area" ref="contentAreaRef" v-if="activeImage || isImageCorrupted">
+    <div class="content-area" ref="contentAreaRef" v-if="activeImage || isImageCorrupted" @mousemove="handleWorkspaceMouseMove">
       <!-- Favourite Star Indicator (absolute positioned over image) -->
-      <div v-if="activeImage && isCurrentImageFavourited" class="favourite-star">
+      <div v-if="shouldShowFavouriteStar" class="favourite-star">
         ⭐
       </div>
 
       <!-- Zoom Controls (absolute positioned) -->
-      <ZoomControls v-if="activeImage && areZoomAndNavigationControlsVisible"/>
+      <ZoomControls v-if="shouldShowZoomControls"/>
 
       <!-- Pure Image Viewer (scrollable when zoomed) -->
       <ImageViewer
@@ -26,7 +27,7 @@
       />
 
       <!-- Image Info Bar (fixed at bottom) -->
-      <div class="info-bar" v-if="areZoomAndNavigationControlsVisible">
+      <div class="info-bar" v-if="shouldShowInfoBar">
         <div class="image-info">
           <span class="image-name">{{ currentFileEntry?.name || activeImage?.name || 'Unknown' }}</span>
           <span class="image-details" v-if="!isImageCorrupted && activeImage">
@@ -64,7 +65,7 @@
           </button>
         </div>
       </div>
-      <div class="mini-info-bar" v-else>
+      <div class="mini-info-bar" v-if="shouldShowMiniInfoBar">
         {{ currentImageIndex + 1 }} of {{ currentFolderSize }}
 
         <div v-if="duplicateTabs.length > 0" class="duplicate-tabs-notice mini">
@@ -123,6 +124,8 @@ import { useZoomControls } from '../composables/useZoomControls'
 import { useShortcutContext, type KeyboardActions } from '../composables/useShortcutContext'
 import { useUIConfigurations } from "../composables/useUIConfigurations.ts"
 import { useSessionManager } from '../composables/useSessionManager'
+import { useFullscreen } from '../composables/useFullscreen'
+import { useFullscreenHover } from '../composables/useFullscreenHover'
 import { getDirectoryPath } from '../utils/pathUtils'
 
 // Props and Emits
@@ -184,6 +187,17 @@ const {
 } = useZoomControls()
 
 const { areZoomAndNavigationControlsVisible } = useUIConfigurations()
+
+const { isFullscreen, toggleFullscreen } = useFullscreen()
+
+const {
+  updateMousePosition,
+  updateViewportSize,
+  isMouseAtLeftEdge,
+  isMouseAtTopEdge,
+  isMouseAtRightEdge,
+  isMouseAtBottomEdge
+} = useFullscreenHover()
 
 const {
   saveSession,
@@ -263,6 +277,43 @@ const selectedGroupImages = computed((): ImageData[] => {
   }
 
   return groupTabs.map(tab => tab.imageData)
+})
+
+// Fullscreen control visibility computed properties
+const shouldShowTabBar = computed(() => {
+  if (!isFullscreen.value) return true
+  // In fullscreen, show TabBar only when mouse is at appropriate edge
+  if (layoutPosition.value === 'tree') {
+    return isMouseAtLeftEdge.value
+  } else if (layoutPosition.value === 'top') {
+    return isMouseAtTopEdge.value
+  }
+  // Invisible layout never shows TabBar
+  return false
+})
+
+const shouldShowZoomControls = computed(() => {
+  if (!isFullscreen.value) return activeImage.value && areZoomAndNavigationControlsVisible.value
+  // In fullscreen, show when mouse is at right edge
+  return activeImage.value && isMouseAtRightEdge.value
+})
+
+const shouldShowInfoBar = computed(() => {
+  if (!isFullscreen.value) return areZoomAndNavigationControlsVisible.value
+  // In fullscreen, show when mouse is at bottom edge
+  return isMouseAtBottomEdge.value && areZoomAndNavigationControlsVisible.value
+})
+
+const shouldShowMiniInfoBar = computed(() => {
+  if (!isFullscreen.value) return !areZoomAndNavigationControlsVisible.value
+  // In fullscreen, show when mouse is at bottom edge
+  return isMouseAtBottomEdge.value && !areZoomAndNavigationControlsVisible.value
+})
+
+const shouldShowFavouriteStar = computed(() => {
+  if (!isFullscreen.value) return activeImage.value && isCurrentImageFavourited.value
+  // In fullscreen, always show the star (no hover needed)
+  return activeImage.value && isCurrentImageFavourited.value
 })
 
 watch(activeTabId, () => {
@@ -825,6 +876,13 @@ const formatFileSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
+// Handle mouse movement for fullscreen hover detection
+const handleWorkspaceMouseMove = (event: MouseEvent) => {
+  if (isFullscreen.value) {
+    updateMousePosition(event)
+  }
+}
+
 const handleDocumentMouseDown = (event: MouseEvent) => {
   const target = event.target instanceof Node ? event.target : null
 
@@ -982,6 +1040,7 @@ const keyboardActions: KeyboardActions = {
   toggleFitMode,
   panImageBy,
   toggleFavourite,
+  toggleFullscreen,
   saveAutoSession: () => saveSession('auto')
 }
 
@@ -997,6 +1056,7 @@ onMounted(() => {
   document.addEventListener('mousedown', handleDocumentMouseDown)
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
+  window.addEventListener('resize', updateViewportSize)
 
   // Setup memory optimization interval
   const memoryOptimizationResource = new ManagedResource(() => {
@@ -1012,6 +1072,7 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', handleDocumentMouseDown)
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
+  window.removeEventListener('resize', updateViewportSize)
 
   // Cleanup all managed resources
   managedResources.forEach(resource => resource.cleanup())

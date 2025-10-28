@@ -42,6 +42,9 @@ export interface KeyboardActions {
   resetZoom: () => void
   toggleFitMode: () => void
 
+  // Fullscreen mode
+  toggleFullscreen: () => void
+
   // Session management
   saveAutoSession: () => void
 
@@ -204,6 +207,9 @@ export function useShortcutContext(actions?: KeyboardActions) {
           break
         case 'toggleFitMode':
           actions.toggleFitMode()
+          break
+        case 'toggleFullscreen':
+          actions.toggleFullscreen()
           break
         case 'toggleFavourite':
           actions.toggleFavourite()

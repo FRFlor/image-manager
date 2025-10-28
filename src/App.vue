@@ -6,9 +6,11 @@ import LoadingIndicator from './components/LoadingIndicator.vue'
 import type { ApplicationState, LoadingState, FolderContext, ImageData, FileEntry } from './types'
 import { useUIConfigurations } from './composables/useUIConfigurations'
 import { useSessionManager } from './composables/useSessionManager'
+import { useFullscreen } from './composables/useFullscreen'
 
 const { toggleControlsVisibility } = useUIConfigurations()
 const { saveSession, loadSession, reloadCurrentSession, updateCurrentSession } = useSessionManager()
+const { toggleFullscreen } = useFullscreen()
 
 // Application state
 const appState = ref<ApplicationState>({
@@ -98,6 +100,16 @@ onMounted(async () => {
           toggleControlsVisibility()
         } catch (error) {
           console.error('Failed to toggle controls from menu:', error)
+        }
+      })
+
+      // Listen for menu toggle fullscreen event
+      await listen('menu-toggle-fullscreen', async () => {
+        console.log('Menu toggle fullscreen requested')
+        try {
+          toggleFullscreen()
+        } catch (error) {
+          console.error('Failed to toggle fullscreen from menu:', error)
         }
       })
 

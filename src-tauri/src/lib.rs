@@ -1143,6 +1143,7 @@ fn update_full_menu(app: &tauri::AppHandle, recent_sessions: &[String], loaded_s
 
     let view_menu = SubmenuBuilder::new(app, "View")
         .text("toggle_controls", "Toggle Controls")
+        .text("toggle_fullscreen", "Enter Fullscreen")
         .build()
         .map_err(|e| format!("Failed to build View menu: {}", e))?;
 
@@ -1245,9 +1246,10 @@ pub fn run() {
                 .item(&PredefinedMenuItem::close_window(app, Some("Close Window"))?)
                 .build()?;
 
-            // "View" submenu with Toggle Controls option
+            // "View" submenu with Toggle Controls and Fullscreen options
             let view_menu = SubmenuBuilder::new(app, "View")
                 .text("toggle_controls", "Toggle Controls")
+                .text("toggle_fullscreen", "Enter Fullscreen")
                 .build()?;
 
             let app_menu = MenuBuilder::new(app)
@@ -1275,6 +1277,9 @@ pub fn run() {
                     }
                     "toggle_controls" => {
                         let _ = app_handle.emit("menu-toggle-controls", ());
+                    }
+                    "toggle_fullscreen" => {
+                        let _ = app_handle.emit("menu-toggle-fullscreen", ());
                     }
                     "reload_session" => {
                         let _ = app_handle.emit("menu-reload-session", ());

@@ -270,6 +270,13 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Toggle fit modes (Cmd /)'
   },
 
+  // Fullscreen Mode
+  {
+    key: 'F11',
+    action: 'toggleFullscreen',
+    description: 'Toggle fullscreen mode (F11)'
+  },
+
   // Session Management (for testing)
   {
     key: 's',
