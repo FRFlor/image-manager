@@ -22,7 +22,8 @@ export function useSessionManager() {
     sortedTabs,
     layoutPosition,
     layoutSize,
-    treeCollapsed
+    treeCollapsed,
+    skipCorruptImages
   } = useTabControls()
 
   const { saveZoomAndPanStateIntoTab } = useZoomControls()
@@ -74,6 +75,7 @@ export function useSessionManager() {
       layoutSize: layoutSize.value,
       treeCollapsed: treeCollapsed.value,
       controlsVisible: areZoomAndNavigationControlsVisible.value,
+      skipCorruptImages: skipCorruptImages.value,
       // Loaded session tracking (for persistence across app restarts)
       loadedSessionName: currentSessionName.value || undefined,
       loadedSessionPath: currentSessionPath.value || undefined

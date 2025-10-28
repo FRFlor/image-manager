@@ -7,10 +7,12 @@ import type { ApplicationState, LoadingState, FolderContext, ImageData, FileEntr
 import { useUIConfigurations } from './composables/useUIConfigurations'
 import { useSessionManager } from './composables/useSessionManager'
 import { useFullscreen } from './composables/useFullscreen'
+import { useTabControls } from './composables/useTabControls'
 
 const { toggleControlsVisibility } = useUIConfigurations()
 const { saveSession, loadSession, reloadCurrentSession, updateCurrentSession } = useSessionManager()
 const { toggleFullscreen } = useFullscreen()
+const { toggleSkipCorruptImages } = useTabControls()
 
 // Application state
 const appState = ref<ApplicationState>({
@@ -110,6 +112,16 @@ onMounted(async () => {
           toggleFullscreen()
         } catch (error) {
           console.error('Failed to toggle fullscreen from menu:', error)
+        }
+      })
+
+      // Listen for menu toggle skip corrupt images event
+      await listen('menu-toggle-skip-corrupt', async () => {
+        console.log('Menu toggle skip corrupt images requested')
+        try {
+          toggleSkipCorruptImages()
+        } catch (error) {
+          console.error('Failed to toggle skip corrupt images from menu:', error)
         }
       })
 

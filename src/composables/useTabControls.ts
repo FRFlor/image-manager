@@ -30,6 +30,9 @@ const layoutPosition = ref<'invisible' | 'top' | 'tree'>('tree')
 const layoutSize = ref<'small' | 'large'>('small')
 const treeCollapsed = ref(false)
 
+// Image loading preferences
+const skipCorruptImages = ref(false)
+
 // Duplicate tab detection state
 interface DuplicateTabInfo {
   tabId: string
@@ -1279,6 +1282,12 @@ export function useTabControls() {
     console.log(`Tree ${treeCollapsed.value ? 'collapsed' : 'expanded'}`)
   }
 
+  // Toggle skip corrupt images setting
+  const toggleSkipCorruptImages = () => {
+    skipCorruptImages.value = !skipCorruptImages.value
+    console.log(`Skip corrupt images: ${skipCorruptImages.value}`)
+  }
+
   // Helper to create session data for new window
   const createNewWindowSessionData = (tabsToInclude: TabData[], groupToInclude?: TabGroup) => {
     const sessionTabs = tabsToInclude.map((tab, index) => ({
@@ -1306,7 +1315,8 @@ export function useTabControls() {
       createdAt: new Date().toISOString(),
       layoutPosition: layoutPosition.value,
       layoutSize: layoutSize.value,
-      treeCollapsed: treeCollapsed.value
+      treeCollapsed: treeCollapsed.value,
+      skipCorruptImages: skipCorruptImages.value
     }
   }
 
@@ -1501,6 +1511,10 @@ export function useTabControls() {
     toggleLayoutPosition,
     toggleLayoutSize,
     toggleTreeCollapse,
+
+    // Image loading preferences
+    skipCorruptImages,
+    toggleSkipCorruptImages,
 
     // Context menu
     showTabContextMenu,

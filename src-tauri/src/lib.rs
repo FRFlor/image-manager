@@ -87,6 +87,8 @@ pub struct SessionData {
     tree_collapsed: Option<bool>,
     #[serde(rename = "controlsVisible", skip_serializing_if = "Option::is_none")]
     controls_visible: Option<bool>,
+    #[serde(rename = "skipCorruptImages", skip_serializing_if = "Option::is_none")]
+    skip_corrupt_images: Option<bool>,
     // Loaded session tracking (only saved in auto-session)
     #[serde(rename = "loadedSessionName", skip_serializing_if = "Option::is_none")]
     loaded_session_name: Option<String>,
@@ -1250,6 +1252,7 @@ pub fn run() {
             let view_menu = SubmenuBuilder::new(app, "View")
                 .text("toggle_controls", "Toggle Controls")
                 .text("toggle_fullscreen", "Enter Fullscreen")
+                .check("toggle_skip_corrupt", "Skip Corrupt Images")
                 .build()?;
 
             let app_menu = MenuBuilder::new(app)
@@ -1280,6 +1283,9 @@ pub fn run() {
                     }
                     "toggle_fullscreen" => {
                         let _ = app_handle.emit("menu-toggle-fullscreen", ());
+                    }
+                    "toggle_skip_corrupt" => {
+                        let _ = app_handle.emit("menu-toggle-skip-corrupt", ());
                     }
                     "reload_session" => {
                         let _ = app_handle.emit("menu-reload-session", ());

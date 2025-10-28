@@ -191,7 +191,6 @@ const {
   contextMenuCreateGroupWithNext,
   contextMenuCanCreateGroupFromSelection,
   shouldGroupBeCollapsed,
-  contextMenuRenameGroup: contextMenuRenameGroupBase,
   contextMenuRemoveFromGroup: contextMenuRemoveFromGroupBase,
   renameGroup,
   removeTabFromGroup,
@@ -282,18 +281,6 @@ const handleContextMenuCreateGroupFromSelection = () => {
   createGroup(groupName, result.tabIds)
   console.log(`✅ Created group "${groupName}" with ${result.tabIds.length} tabs`)
   clearSelection()
-
-  contextMenuVisible.value = false
-}
-
-const handleContextMenuRenameGroup = () => {
-  const groupInfo = contextMenuRenameGroupBase()
-  if (!groupInfo) return
-
-  const newName = window.prompt(`Rename group "${groupInfo.currentName}":`, groupInfo.currentName)
-  if (newName && newName.trim() !== '') {
-    renameGroup(groupInfo.groupId, newName.trim())
-  }
 
   contextMenuVisible.value = false
 }

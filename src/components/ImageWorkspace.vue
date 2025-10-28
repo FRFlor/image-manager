@@ -155,7 +155,8 @@ const {
   toggleFavourite,
   duplicateTabs,
   detectDuplicateTabs,
-  clearDuplicates
+  clearDuplicates,
+  skipCorruptImages
 } = useTabControls()
 
 const {
@@ -691,12 +692,54 @@ const performNavigation = async (direction: 'next' | 'prev') => {
     // Track navigation for directional preloading
     directionalPreloader.trackNavigation(targetIndex, currentIndex)
 
-    const targetEntry = folderContext.fileEntries[targetIndex]
+    let targetEntry = folderContext.fileEntries[targetIndex]
     if (!targetEntry) return
 
     // Load image metadata if not already loaded (may return null for corrupted images)
     // This now uses batch loader internally for efficiency
-    const targetImageData = await loadImageMetadata(targetEntry.path, folderContext)
+    let targetImageData = await loadImageMetadata(targetEntry.path, folderContext)
+
+    // If skip corrupt images is enabled, try to find the next valid image
+    if (skipCorruptImages.value && targetImageData === null) {
+      console.log('Image is corrupt and skipCorruptImages is enabled, searching for next valid image...')
+      const startIndex = targetIndex
+      let attempts = 0
+      const maxAttempts = folderContext.fileEntries.length
+
+      // Keep trying to find a valid image in the same direction
+      while (targetImageData === null && attempts < maxAttempts) {
+        attempts++
+
+        // Move to next image in the same direction
+        if (direction === 'next') {
+          targetIndex = (targetIndex + 1) % folderContext.fileEntries.length
+        } else {
+          targetIndex = targetIndex === 0 ? folderContext.fileEntries.length - 1 : targetIndex - 1
+        }
+
+        // If we've looped back to where we started, stop (all images are corrupt)
+        if (targetIndex === startIndex || targetIndex === currentIndex) {
+          console.log('All remaining images are corrupt, stopping navigation')
+          break
+        }
+
+        targetEntry = folderContext.fileEntries[targetIndex]
+        if (!targetEntry) break
+
+        targetImageData = await loadImageMetadata(targetEntry.path, folderContext)
+      }
+
+      // If still no valid image found, don't navigate
+      if (targetImageData === null || !targetEntry) {
+        console.log('No valid images found, navigation stopped')
+        return
+      }
+
+      console.log(`Found valid image after ${attempts} attempt(s)`)
+    }
+
+    // Final safety check - ensure we have a valid entry
+    if (!targetEntry) return
 
     // Check if this navigation is still valid (no newer navigation started)
     if (currentSequenceId !== navigationSequenceId.value) {
@@ -1275,7 +1318,10 @@ const restoreFromSession = async (sessionData: SessionData) => {
     if (sessionData.controlsVisible !== undefined) {
       areZoomAndNavigationControlsVisible.value = sessionData.controlsVisible
     }
-    console.log(`✅ Restored UI state: layout=${layoutPosition.value}/${layoutSize.value}, treeCollapsed=${treeCollapsed.value}, controlsVisible=${areZoomAndNavigationControlsVisible.value}`)
+    if (sessionData.skipCorruptImages !== undefined) {
+      skipCorruptImages.value = sessionData.skipCorruptImages
+    }
+    console.log(`✅ Restored UI state: layout=${layoutPosition.value}/${layoutSize.value}, treeCollapsed=${treeCollapsed.value}, controlsVisible=${areZoomAndNavigationControlsVisible.value}, skipCorruptImages=${skipCorruptImages.value}`)
 
     // Scroll the active tab into view after restoration
     if (activeTabIdToLoad) {
