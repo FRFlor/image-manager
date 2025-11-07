@@ -154,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useTabControls } from '../composables/useTabControls'
 
 // Emits
@@ -214,6 +214,9 @@ const {
 const groupContextMenuVisible = ref(false)
 const groupContextMenuPosition = ref({ x: 0, y: 0 })
 const groupContextMenuGroupId = ref<string | null>(null)
+
+// Store cleanup function for group context menu event listener
+let groupContextMenuCleanup: (() => void) | null = null
 
 // Template refs
 const treeItemsContainer = ref<HTMLElement>()
@@ -299,6 +302,14 @@ const handleContextMenuRemoveFromGroup = () => {
   contextMenuVisible.value = false
 }
 
+// Cleanup on unmount
+onUnmounted(() => {
+  if (groupContextMenuCleanup) {
+    groupContextMenuCleanup()
+    groupContextMenuCleanup = null
+  }
+})
+
 // Group context menu handlers
 const showGroupContextMenu = (event: MouseEvent, groupId: string) => {
   event.preventDefault()
@@ -312,11 +323,23 @@ const showGroupContextMenu = (event: MouseEvent, groupId: string) => {
   // Close tab context menu if open
   contextMenuVisible.value = false
 
+  // Clean up any existing listener before adding a new one
+  if (groupContextMenuCleanup) {
+    groupContextMenuCleanup()
+  }
+
   // Close menu when clicking outside
   const closeMenu = () => {
     groupContextMenuVisible.value = false
     document.removeEventListener('click', closeMenu)
+    groupContextMenuCleanup = null
   }
+
+  // Store cleanup function for unmount handler
+  groupContextMenuCleanup = () => {
+    document.removeEventListener('click', closeMenu)
+  }
+
   setTimeout(() => {
     document.addEventListener('click', closeMenu)
   }, 0)

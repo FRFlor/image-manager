@@ -1,4 +1,4 @@
-import {computed, ref} from 'vue'
+import {computed, ref, onUnmounted} from 'vue'
 import type {FolderContext, ImageData, TabData, TabGroup} from '../types'
 
 // CONSTANTS
@@ -54,6 +54,17 @@ if (!tabGroups.value.has(FAVOURITES_GROUP_ID)) {
 }
 
 export function useTabControls() {
+  // Store cleanup function for context menu event listener
+  let contextMenuCleanup: (() => void) | null = null
+
+  // Cleanup event listeners on unmount
+  onUnmounted(() => {
+    if (contextMenuCleanup) {
+      contextMenuCleanup()
+      contextMenuCleanup = null
+    }
+  })
+
   const shouldGroupBeCollapsed = function(groupId?: string) {
       if (! groupId) {
           return false;
@@ -264,7 +275,12 @@ export function useTabControls() {
       if (!firstTabOfGroup) {
         return;
       }
-      activeTabId.value =  firstTabOfGroup.id
+
+      // Properly update tab state when switching from group header to tab
+      tabs.value.forEach(t => { t.isActive = false })
+      firstTabOfGroup.isActive = true
+      activeTabId.value = firstTabOfGroup.id
+      selectedGroupId.value = null
 
       const newDelta = delta > 0 ? delta - 1 : delta
 
@@ -1103,8 +1119,19 @@ export function useTabControls() {
     contextMenuTabId.value = tabId
     contextMenuVisible.value = true
 
+    // Clean up any existing listener before adding a new one
+    if (contextMenuCleanup) {
+      contextMenuCleanup()
+    }
+
     const closeContextMenu = () => {
       contextMenuVisible.value = false
+      document.removeEventListener('click', closeContextMenu)
+      contextMenuCleanup = null
+    }
+
+    // Store cleanup function for unmount handler
+    contextMenuCleanup = () => {
       document.removeEventListener('click', closeContextMenu)
     }
 
@@ -1209,7 +1236,7 @@ export function useTabControls() {
     const clickedTab = tabs.value.get(contextMenuTabId.value)
     if (!clickedTab) return null
 
-    // If the clicked tab is in the selection, return all selected tabs that have a groupId
+    // If the clicked tab is in the selection, return all selected tabs (removeTabFromGroup handles ungrouped tabs gracefully)
     if (selectedTabIds.value.has(contextMenuTabId.value) && selectedTabIds.value.size > 1) {
       const tabsToRemove = Array.from(selectedTabIds.value)
       return tabsToRemove.length > 0 ? tabsToRemove : null

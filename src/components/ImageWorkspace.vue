@@ -620,11 +620,7 @@ const nextImage = async () => {
   if (navigationInProgress.value) {
     // Only queue if under max depth
     if (navigationQueue.value.length < MAX_NAVIGATION_QUEUE_DEPTH) {
-      // Optimize: if last queued is same direction, don't add duplicate
-      const lastQueued = navigationQueue.value[navigationQueue.value.length - 1]
-      if (lastQueued !== 'next') {
-        navigationQueue.value.push('next')
-      }
+      navigationQueue.value.push('next')
     } else {
       console.warn('⚠️ Navigation queue full, skipping request')
     }
@@ -639,11 +635,7 @@ const previousImage = async () => {
   if (navigationInProgress.value) {
     // Only queue if under max depth
     if (navigationQueue.value.length < MAX_NAVIGATION_QUEUE_DEPTH) {
-      // Optimize: if last queued is same direction, don't add duplicate
-      const lastQueued = navigationQueue.value[navigationQueue.value.length - 1]
-      if (lastQueued !== 'prev') {
-        navigationQueue.value.push('prev')
-      }
+      navigationQueue.value.push('prev')
     } else {
       console.warn('⚠️ Navigation queue full, skipping request')
     }
@@ -757,6 +749,9 @@ const performNavigation = async (direction: 'next' | 'prev') => {
         console.warn('Preload failed:', err)
       )
     }
+  } catch (error) {
+    console.error('Navigation failed:', error)
+    // Navigation failed, but we still need to clean up the navigation state
   } finally {
     navigationInProgress.value = false
 
