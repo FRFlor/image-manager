@@ -195,7 +195,6 @@ const {
 } = useSessionManager()
 
 // Reactive state
-const currentFolderImages = ref<ImageData[]>([])
 const contentAreaRef = ref<HTMLElement>()
 const tabBarRef = ref<InstanceType<typeof TabBar>>()
 
@@ -421,10 +420,6 @@ const openImage = (imageData: ImageData, folderContext: FolderContext) => {
   const fileEntry = folderContext.fileEntries.find(entry => entry.path === imageData.path)
   currentFileEntry.value = fileEntry || null
 
-  // Update currentFolderImages with loaded images only
-  currentFolderImages.value = Array.from(folderContext.loadedImages.values())
-    .sort((a, b) => a.name.localeCompare(b.name))
-
   // Preload adjacent images for better performance
   preloadAdjacentImagesLazy(imageData, folderContext)
 }
@@ -486,9 +481,6 @@ const switchToTab = async (tabId: string) => {
 const loadFolderContextForTab = async (tab: TabData) => {
   // Check if we already have folder context for this tab
   if (tabFolderContexts.value.has(tab.id)) {
-    const folderContext = tabFolderContexts.value.get(tab.id)!
-    currentFolderImages.value = Array.from(folderContext.loadedImages.values())
-      .sort((a, b) => a.name.localeCompare(b.name))
     return
   }
 
@@ -500,6 +492,7 @@ const loadFolderContextForTab = async (tab: TabData) => {
     const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
 
     // Filter and transform to FileEntry format
+    // Note: folderEntries is already sorted by Rust backend using natural sort
     const imageFileEntries = folderEntries
       .filter(entry => entry.is_image)
       .map(entry => ({
@@ -510,7 +503,6 @@ const loadFolderContextForTab = async (tab: TabData) => {
         size: entry.size,
         lastModified: entry.last_modified ? new Date(entry.last_modified) : undefined
       }))
-      .sort((a, b) => a.name.localeCompare(b.name))
 
     // Create folder context with the current image already loaded
     const loadedImages = new Map<string, ImageData>()
@@ -548,13 +540,10 @@ const loadFolderContextForTab = async (tab: TabData) => {
 
     // Store folder context for this tab
     tabFolderContexts.value.set(tab.id, folderContext)
-    currentFolderImages.value = Array.from(folderContext.loadedImages.values())
-      .sort((a, b) => a.name.localeCompare(b.name))
 
     console.log(`📁 Loaded folder context for tab (${folderContext.loadedImages.size}/${imageFileEntries.length} images)`)
   } catch (error) {
     console.error('Failed to load folder context for tab:', error)
-    currentFolderImages.value = [tab.imageData] // Fallback to just the current image
   }
 }
 
@@ -610,8 +599,6 @@ const closeTab = (tabId: string) => {
 
   if (newActiveTabId) {
     switchToTab(newActiveTabId)
-  } else if (newActiveTabId === null) {
-    currentFolderImages.value = []
   }
 }
 
@@ -865,10 +852,6 @@ const openImageInNewTab = async () => {
 
     // Set current file entry for the new tab
     currentFileEntry.value = nextEntry
-
-    // Update currentFolderImages
-    currentFolderImages.value = Array.from(newFolderContext.loadedImages.values())
-      .sort((a, b) => a.name.localeCompare(b.name))
 
     console.log(`Opened ${nextEntry.name} in new tab and switched to it`)
   }
@@ -1147,7 +1130,6 @@ const restoreFromSession = async (sessionData: SessionData) => {
   try {
     // Clear existing tabs and groups using composable
     clearTabs()
-    currentFolderImages.value = []
 
     // Import invoke here to avoid unused import warning
     const { invoke } = await import('@tauri-apps/api/core')
@@ -1253,6 +1235,7 @@ const restoreFromSession = async (sessionData: SessionData) => {
 
         try {
           const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
+          // Note: folderEntries is already sorted by Rust backend using natural sort
           const imageFileEntries = folderEntries
             .filter(entry => entry.is_image)
             .map(entry => ({
@@ -1263,7 +1246,6 @@ const restoreFromSession = async (sessionData: SessionData) => {
               size: entry.size,
               lastModified: entry.last_modified ? new Date(entry.last_modified) : undefined
             }))
-            .sort((a, b) => a.name.localeCompare(b.name))
 
           // Create minimal folder context with only the current image
           const loadedImages = new Map<string, ImageData>()
@@ -1276,8 +1258,6 @@ const restoreFromSession = async (sessionData: SessionData) => {
           }
 
           tabFolderContexts.value.set(activeTab.id, folderContext)
-          currentFolderImages.value = Array.from(folderContext.loadedImages.values())
-            .sort((a, b) => a.name.localeCompare(b.name))
 
           activeTab.isFullyLoaded = true
           console.log(`✅ Active tab loaded (minimal, no preload): ${activeTab.title}`)

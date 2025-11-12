@@ -186,12 +186,6 @@ fn collect_image_files(target_path: &Path) -> Result<Vec<FileEntry>, String> {
     // Sort entries using natural sort for consistent ordering (handles numeric portions correctly)
     entries.sort_by(|a, b| natord::compare_ignore_case(&a.name, &b.name));
 
-    // Debug: log first few entries after sorting
-    log::info!("Sorted {} entries. First 5:", entries.len());
-    for (i, entry) in entries.iter().take(5).enumerate() {
-        log::info!("  {}: {}", i + 1, entry.name);
-    }
-
     Ok(entries)
 }
 

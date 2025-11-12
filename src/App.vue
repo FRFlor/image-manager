@@ -291,6 +291,7 @@ const handleOpenImageRequest = async () => {
       const folderEntries = await invoke<any[]>('browse_folder', { path: folderPath })
 
       // Filter image files and convert to FileEntry format
+      // Note: folderEntries is already sorted by Rust backend using natural sort
       const imageFileEntries: FileEntry[] = folderEntries
         .filter(entry => entry.is_image)
         .map(entry => ({
@@ -301,7 +302,6 @@ const handleOpenImageRequest = async () => {
           size: entry.size,
           lastModified: entry.last_modified ? new Date(entry.last_modified) : undefined
         }))
-        .sort((a, b) => a.name.localeCompare(b.name))
 
       // Transform the selected image data
       const transformedImageData: ImageData = {
