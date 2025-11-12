@@ -1,7 +1,11 @@
 <template>
   <div class="image-workspace" :class="'layout-' + currentLayout">
-    <!-- Preload Progress Bar (YouTube-style, fixed at top) -->
-    <PreloadProgressBar :progress="activeTabPreloadProgress" />
+    <!-- Folder Position Bar (shows loaded images + current position) -->
+    <PreloadProgressBar
+      :currentIndex="currentImageIndex"
+      :totalImages="currentFolderSize"
+      :loadedIndices="activeTabLoadedIndices"
+    />
 
     <TabBar
       v-if="shouldShowTabBar"
@@ -161,8 +165,9 @@ const {
   detectDuplicateTabs,
   clearDuplicates,
   skipCorruptImages,
-  activeTabPreloadProgress,
-  updatePreloadProgress
+  activeTabLoadedIndices,
+  addLoadedIndex,
+  initializeLoadedIndices
 } = useTabControls()
 
 const {
@@ -417,7 +422,12 @@ const loadImageMetadata = async (filePath: string, folderContext: FolderContext)
 // Methods
 const openImage = (imageData: ImageData, folderContext: FolderContext) => {
   // Use composable to open tab
-  openTab(imageData, folderContext)
+  const tabId = openTab(imageData, folderContext)
+
+  // Initialize loaded indices for this tab
+  if (tabId) {
+    initializeLoadedIndices(tabId, folderContext)
+  }
 
   // Scroll the new tab into view
   scrollActiveTabIntoView()
@@ -851,7 +861,12 @@ const openImageInNewTab = async () => {
     }
 
     // Use composable to open the new tab
-    openTab(imageData, newFolderContext)
+    const tabId = openTab(imageData, newFolderContext)
+
+    // Initialize loaded indices for this tab
+    if (tabId) {
+      initializeLoadedIndices(tabId, newFolderContext)
+    }
 
     // Scroll the new tab into view
     scrollActiveTabIntoView()
@@ -1095,10 +1110,10 @@ onMounted(() => {
   document.addEventListener('mouseup', handleMouseUp)
   window.addEventListener('resize', updateViewportSize)
 
-  // Setup preload progress callback
-  directionalPreloader.setProgressCallback((loaded, total) => {
+  // Setup callback for when images are loaded
+  directionalPreloader.setImageLoadedCallback((index: number) => {
     if (activeTabId.value) {
-      updatePreloadProgress(activeTabId.value, loaded, total)
+      addLoadedIndex(activeTabId.value, index)
     }
   })
 

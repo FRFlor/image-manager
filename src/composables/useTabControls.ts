@@ -41,12 +41,8 @@ interface DuplicateTabInfo {
 }
 const duplicateTabs = ref<DuplicateTabInfo[]>([])
 
-// Preload progress tracking
-interface PreloadProgress {
-  loaded: number
-  total: number
-}
-const preloadProgress = ref<Map<string, PreloadProgress>>(new Map())
+// Loaded image indices tracking (for progress bar visualization)
+const loadedImageIndices = ref<Map<string, Set<number>>>(new Map())
 
 // Initialize Favourites group at module level
 if (!tabGroups.value.has(FAVOURITES_GROUP_ID)) {
@@ -96,14 +92,12 @@ export function useTabControls() {
     return `${layoutPosition.value}-${layoutSize.value}` as 'top-small' | 'top-large' | 'tree-small' | 'tree-large'
   })
 
-  // Preload progress for active tab (0-100)
-  const activeTabPreloadProgress = computed(() => {
-    if (!activeTabId.value) return 100 // No active tab = no loading
+  // Loaded indices for active tab (for position bar visualization)
+  const activeTabLoadedIndices = computed(() => {
+    if (!activeTabId.value) return new Set<number>()
 
-    const progress = preloadProgress.value.get(activeTabId.value)
-    if (!progress || progress.total === 0) return 100 // No progress data or empty folder = complete
-
-    return Math.min(100, Math.round((progress.loaded / progress.total) * 100))
+    const indices = loadedImageIndices.value.get(activeTabId.value)
+    return indices || new Set<number>()
   })
 
   // Tree view items with group headers
@@ -1458,13 +1452,29 @@ export function useTabControls() {
     console.log(`Sorted ${tabsToSort.length} tabs alphabetically`)
   }
 
-  // Preload progress management
-  const updatePreloadProgress = (tabId: string, loaded: number, total: number): void => {
-    preloadProgress.value.set(tabId, { loaded, total })
+  // Loaded indices management
+  const addLoadedIndex = (tabId: string, index: number): void => {
+    let indices = loadedImageIndices.value.get(tabId)
+    if (!indices) {
+      indices = new Set<number>()
+      loadedImageIndices.value.set(tabId, indices)
+    }
+    indices.add(index)
   }
 
-  const clearPreloadProgress = (tabId: string): void => {
-    preloadProgress.value.delete(tabId)
+  const clearLoadedIndices = (tabId: string): void => {
+    loadedImageIndices.value.delete(tabId)
+  }
+
+  const initializeLoadedIndices = (tabId: string, folderContext: FolderContext): void => {
+    const indices = new Set<number>()
+    // Add indices for all currently loaded images
+    folderContext.fileEntries.forEach((entry, index) => {
+      if (folderContext.loadedImages.has(entry.path)) {
+        indices.add(index)
+      }
+    })
+    loadedImageIndices.value.set(tabId, indices)
   }
 
   return {
@@ -1565,9 +1575,10 @@ export function useTabControls() {
     // Sort group tabs
     sortGroupTabsAlphabetically,
 
-    // Preload progress
-    activeTabPreloadProgress,
-    updatePreloadProgress,
-    clearPreloadProgress
+    // Loaded indices tracking
+    activeTabLoadedIndices,
+    addLoadedIndex,
+    clearLoadedIndices,
+    initializeLoadedIndices
   }
 }
