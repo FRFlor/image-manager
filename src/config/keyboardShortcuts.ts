@@ -105,6 +105,12 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Open next image in new tab and switch to it'
   },
   {
+    key: 'Enter',
+    modifiers: { shift: true },
+    action: 'toggleFolderGrid',
+    description: 'Toggle folder grid view'
+  },
+  {
     key: 'o',
     modifiers: { ctrl: true },
     action: 'createNewTab',

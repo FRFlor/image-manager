@@ -38,6 +38,9 @@ export interface KeyboardActions {
   // Favourites management
   toggleFavourite: () => void
 
+  // Folder grid view
+  toggleFolderGrid: () => void
+
   // Zoom controls
   zoomIn: () => void
   zoomOut: () => void
@@ -221,6 +224,9 @@ export function useShortcutContext(actions?: KeyboardActions) {
           break
         case 'toggleFavourite':
           actions.toggleFavourite()
+          break
+        case 'toggleFolderGrid':
+          actions.toggleFolderGrid()
           break
         case 'saveAutoSession':
           actions.saveAutoSession()

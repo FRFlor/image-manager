@@ -87,6 +87,17 @@
         @imageReordered="(direction, tabId) => moveTab(direction, tabId)" />
     </div>
 
+    <!-- Folder Grid Preview -->
+    <div v-else-if="showFolderGrid && activeTabId && currentFolderContext" class="folder-preview-container">
+      <FolderGridPreview
+        :folderContext="currentFolderContext"
+        :currentImagePath="currentImagePath"
+        :focusedIndex="folderGridFocusedIndex !== null ? folderGridFocusedIndex : 0"
+        @imageSelected="handleFolderGridImageSelected"
+        @imageActivated="handleFolderGridImageActivated"
+        @metadataNeeded="handleFolderGridMetadataNeeded" />
+    </div>
+
     <!-- Empty State -->
     <div v-else class="empty-viewer">
       <div class="empty-content">
@@ -106,6 +117,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import type { ImageData, TabData, SessionData, FolderContext, FileEntry, TabGroup } from '../types'
 import GroupGridPreview from './GroupGridPreview.vue'
+import FolderGridPreview from './FolderGridPreview.vue'
 import TabBar from './TabBar.vue'
 import ZoomControls from './ZoomControls.vue'
 import ImageViewer from './ImageViewer.vue'
@@ -167,7 +179,11 @@ const {
   skipCorruptImages,
   activeTabLoadedIndices,
   addLoadedIndex,
-  initializeLoadedIndices
+  initializeLoadedIndices,
+  showFolderGrid,
+  folderGridFocusedIndex,
+  toggleFolderGrid,
+  setFolderGridFocus
 } = useTabControls()
 
 const {
@@ -257,6 +273,15 @@ const currentFolderSize = computed(() => {
   if (!activeTabId.value) return 0
   const folderContext = tabFolderContexts.value.get(activeTabId.value)
   return folderContext ? folderContext.fileEntries.length : 0
+})
+
+const currentFolderContext = computed(() => {
+  if (!activeTabId.value) return null
+  return tabFolderContexts.value.get(activeTabId.value) || null
+})
+
+const currentImagePath = computed(() => {
+  return activeImage.value?.path || ''
 })
 
 // Get images for the selected group
@@ -964,6 +989,62 @@ const handleGroupImageSelected = (imageId: string): void => {
   }
 }
 
+// Folder grid event handlers
+const handleFolderGridImageSelected = (index: number): void => {
+  // Update focus index when user clicks on a grid item
+  setFolderGridFocus(index)
+}
+
+const handleFolderGridImageActivated = async (index: number): Promise<void> => {
+  // Exit folder grid and set the tab to the selected image
+  if (!activeTabId.value) return
+
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  if (!folderContext) return
+
+  const fileEntry = folderContext.fileEntries[index]
+  if (!fileEntry) return
+
+  // Load the image metadata if not already loaded
+  let imageData: ImageData | null = folderContext.loadedImages.get(fileEntry.path) || null
+  if (!imageData) {
+    imageData = await loadImageMetadata(fileEntry.path, folderContext)
+    if (!imageData) {
+      console.error('Failed to load image metadata:', fileEntry.path)
+      return
+    }
+    folderContext.loadedImages.set(fileEntry.path, imageData)
+  }
+
+  // Update the current tab's image (imageData is guaranteed to be non-null here)
+  await updateCurrentTabImage(imageData, fileEntry)
+
+  // Exit folder grid view
+  toggleFolderGrid()
+}
+
+const handleFolderGridMetadataNeeded = async (indices: number[]): Promise<void> => {
+  // Load metadata for the requested indices
+  if (!activeTabId.value) return
+
+  const folderContext = tabFolderContexts.value.get(activeTabId.value)
+  if (!folderContext) return
+
+  // Load metadata in batches
+  const pathsToLoad: string[] = []
+  for (const index of indices) {
+    const fileEntry = folderContext.fileEntries[index]
+    if (fileEntry && !folderContext.loadedImages.has(fileEntry.path)) {
+      pathsToLoad.push(fileEntry.path)
+    }
+  }
+
+  if (pathsToLoad.length === 0) return
+
+  // Use batch loader to load metadata
+  await batchMetadataLoader.loadImageMetadataBatch(pathsToLoad, folderContext)
+}
+
 // Debouncing for preload operations
 let preloadTimeoutId: number | null = null
 let lastPreloadImagePath: string | null = null
@@ -1093,6 +1174,7 @@ const keyboardActions: KeyboardActions = {
   panImageBy,
   toggleFavourite,
   toggleFullscreen,
+  toggleFolderGrid,
   saveAutoSession: () => saveSession('auto')
 }
 
@@ -1583,6 +1665,12 @@ defineExpose({
 }
 
 .group-preview-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.folder-preview-container {
   flex: 1;
   display: flex;
   overflow: hidden;
