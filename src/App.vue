@@ -120,8 +120,8 @@ onMounted(async () => {
         console.log('Menu toggle skip corrupt images requested')
         try {
           toggleSkipCorruptImages()
-          // Update the menu checkbox state in Rust
-          await invoke('update_skip_corrupt_menu_state', { checked: skipCorruptImages.value })
+          // Update the menu checkbox state in Rust (inverted because checkbox defaults to opposite)
+          await invoke('update_skip_corrupt_menu_state', { checked: !skipCorruptImages.value })
         } catch (error) {
           console.error('Failed to toggle skip corrupt images from menu:', error)
         }
@@ -224,9 +224,9 @@ const waitForComponent = async () => {
           operation: ''
         }
 
-        // Initialize menu checkbox state for skip corrupt images
+        // Initialize menu checkbox state for skip corrupt images (inverted because checkbox defaults to opposite)
         try {
-          await invoke('update_skip_corrupt_menu_state', { checked: skipCorruptImages.value })
+          await invoke('update_skip_corrupt_menu_state', { checked: !skipCorruptImages.value })
         } catch (error) {
           console.error('Failed to initialize skip corrupt menu state:', error)
         }
