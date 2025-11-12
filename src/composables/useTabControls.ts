@@ -41,6 +41,13 @@ interface DuplicateTabInfo {
 }
 const duplicateTabs = ref<DuplicateTabInfo[]>([])
 
+// Preload progress tracking
+interface PreloadProgress {
+  loaded: number
+  total: number
+}
+const preloadProgress = ref<Map<string, PreloadProgress>>(new Map())
+
 // Initialize Favourites group at module level
 if (!tabGroups.value.has(FAVOURITES_GROUP_ID)) {
   const favouritesGroup: TabGroup = {
@@ -87,6 +94,16 @@ export function useTabControls() {
   const currentLayout = computed(() => {
     if (layoutPosition.value === 'invisible') return 'invisible'
     return `${layoutPosition.value}-${layoutSize.value}` as 'top-small' | 'top-large' | 'tree-small' | 'tree-large'
+  })
+
+  // Preload progress for active tab (0-100)
+  const activeTabPreloadProgress = computed(() => {
+    if (!activeTabId.value) return 100 // No active tab = no loading
+
+    const progress = preloadProgress.value.get(activeTabId.value)
+    if (!progress || progress.total === 0) return 100 // No progress data or empty folder = complete
+
+    return Math.min(100, Math.round((progress.loaded / progress.total) * 100))
   })
 
   // Tree view items with group headers
@@ -1441,6 +1458,15 @@ export function useTabControls() {
     console.log(`Sorted ${tabsToSort.length} tabs alphabetically`)
   }
 
+  // Preload progress management
+  const updatePreloadProgress = (tabId: string, loaded: number, total: number): void => {
+    preloadProgress.value.set(tabId, { loaded, total })
+  }
+
+  const clearPreloadProgress = (tabId: string): void => {
+    preloadProgress.value.delete(tabId)
+  }
+
   return {
     // State
     tabs,
@@ -1537,6 +1563,11 @@ export function useTabControls() {
     clearDuplicates,
 
     // Sort group tabs
-    sortGroupTabsAlphabetically
+    sortGroupTabsAlphabetically,
+
+    // Preload progress
+    activeTabPreloadProgress,
+    updatePreloadProgress,
+    clearPreloadProgress
   }
 }

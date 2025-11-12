@@ -18,6 +18,7 @@ export class DirectionalPreloader {
   private readonly historySize = 10 // Keep last 10 navigation events
   private backgroundPreloadWorker: number | null = null
   private lastPreloadIndex: number = -1
+  private onProgressUpdate?: (loaded: number, total: number) => void
 
   // Preload distances (balanced settings)
   private readonly basePreloadRange = 10 // ±10 images base (reduced from 100)
@@ -27,6 +28,13 @@ export class DirectionalPreloader {
   // Thresholds
   private readonly rapidNavigationThreshold = 200 // ms between navigations to trigger rapid mode
   private readonly velocityWindowSize = 3 // Use last 3 navigations to calculate velocity
+
+  /**
+   * Set progress update callback
+   */
+  setProgressCallback(callback: (loaded: number, total: number) => void): void {
+    this.onProgressUpdate = callback
+  }
 
   /**
    * Track a navigation event
@@ -165,10 +173,19 @@ export class DirectionalPreloader {
 
     if (pathsToPreload.length === 0) {
       console.log('✅ All images in preload range already loaded')
+      // Report full progress even if nothing to load
+      if (this.onProgressUpdate) {
+        this.onProgressUpdate(folderContext.loadedImages.size, fileEntries.length)
+      }
       return
     }
 
     console.log(`🔄 Preloading ${pathsToPreload.length} images (rapid: ${isRapid})`)
+
+    // Report initial progress
+    if (this.onProgressUpdate) {
+      this.onProgressUpdate(folderContext.loadedImages.size, fileEntries.length)
+    }
 
     // Load metadata in batch (non-blocking)
     batchMetadataLoader.loadImageMetadataBatch(pathsToPreload, folderContext)
@@ -220,6 +237,11 @@ export class DirectionalPreloader {
         }
 
         console.log(`📸 Browser preload queued: ${priorityUrls.length} high-priority, ${lowPriorityUrls.length} low-priority`)
+
+        // Report updated progress after loading
+        if (this.onProgressUpdate) {
+          this.onProgressUpdate(folderContext.loadedImages.size, fileEntries.length)
+        }
       })
       .catch(err => {
         console.error('Preload failed:', err)

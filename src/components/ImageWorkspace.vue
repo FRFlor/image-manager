@@ -1,5 +1,8 @@
 <template>
   <div class="image-workspace" :class="'layout-' + currentLayout">
+    <!-- Preload Progress Bar (YouTube-style, fixed at top) -->
+    <PreloadProgressBar :progress="activeTabPreloadProgress" />
+
     <TabBar
       v-if="shouldShowTabBar"
       @tabSwitched="switchToTab"
@@ -102,6 +105,7 @@ import GroupGridPreview from './GroupGridPreview.vue'
 import TabBar from './TabBar.vue'
 import ZoomControls from './ZoomControls.vue'
 import ImageViewer from './ImageViewer.vue'
+import PreloadProgressBar from './PreloadProgressBar.vue'
 import { memoryManager, ManagedResource } from '../utils/memoryManager'
 import { lazyImageLoader } from '../utils/lazyLoader'
 import { batchMetadataLoader } from '../utils/batchMetadataLoader'
@@ -156,7 +160,9 @@ const {
   duplicateTabs,
   detectDuplicateTabs,
   clearDuplicates,
-  skipCorruptImages
+  skipCorruptImages,
+  activeTabPreloadProgress,
+  updatePreloadProgress
 } = useTabControls()
 
 const {
@@ -1088,6 +1094,13 @@ onMounted(() => {
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
   window.addEventListener('resize', updateViewportSize)
+
+  // Setup preload progress callback
+  directionalPreloader.setProgressCallback((loaded, total) => {
+    if (activeTabId.value) {
+      updatePreloadProgress(activeTabId.value, loaded, total)
+    }
+  })
 
   // Setup memory optimization interval
   const memoryOptimizationResource = new ManagedResource(() => {
