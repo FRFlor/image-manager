@@ -1067,6 +1067,30 @@ async fn load_derivative_session() -> Result<Option<SessionData>, String> {
     Ok(Some(session_data))
 }
 
+// Command to update the "Skip Corrupt Images" menu checkbox state
+#[tauri::command]
+async fn update_skip_corrupt_menu_state(app_handle: tauri::AppHandle, checked: bool) -> Result<(), String> {
+    use tauri::menu::{MenuItemKind, IsMenuItem};
+
+    // Get the menu
+    let menu = app_handle.menu()
+        .ok_or("Failed to get menu")?;
+
+    // Find the "toggle_skip_corrupt" menu item
+    let menu_item = menu.get("toggle_skip_corrupt")
+        .ok_or("Failed to find toggle_skip_corrupt menu item")?;
+
+    // Update the checked state
+    if let MenuItemKind::Check(check_item) = menu_item.kind() {
+        check_item.set_checked(checked)
+            .map_err(|e| format!("Failed to set checked state: {}", e))?;
+    } else {
+        return Err("Menu item is not a checkbox".to_string());
+    }
+
+    Ok(())
+}
+
 // Helper function to build the Recent Sessions submenu
 fn build_recent_sessions_submenu(app: &tauri::AppHandle, recent_sessions: &[String]) -> Result<tauri::menu::Submenu<tauri::Wry>, tauri::Error> {
     use tauri::menu::SubmenuBuilder;
@@ -1146,6 +1170,7 @@ fn update_full_menu(app: &tauri::AppHandle, recent_sessions: &[String], loaded_s
     let view_menu = SubmenuBuilder::new(app, "View")
         .text("toggle_controls", "Toggle Controls")
         .text("toggle_fullscreen", "Enter Fullscreen")
+        .check("toggle_skip_corrupt", "Skip Corrupt Images")
         .build()
         .map_err(|e| format!("Failed to build View menu: {}", e))?;
 
@@ -1227,7 +1252,8 @@ pub fn run() {
             set_window_title,
             exit_app,
             launch_new_instance,
-            load_derivative_session
+            load_derivative_session,
+            update_skip_corrupt_menu_state
         ])
         .setup(|app| {
             // --- Build the application menu ---
