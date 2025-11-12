@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc}; // Still needed for read_image_file
 use image::io::Reader as ImageReader;
 use uuid::Uuid;
+use natord;
 use tauri::{
     Emitter,
     Manager,
@@ -182,8 +183,8 @@ fn collect_image_files(target_path: &Path) -> Result<Vec<FileEntry>, String> {
         Err(e) => return Err(format!("Failed to read directory: {}", e)),
     }
 
-    // Sort entries alphabetically by name for consistent ordering
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    // Sort entries using natural sort for consistent ordering (handles numeric portions correctly)
+    entries.sort_by(|a, b| natord::compare_ignore_case(&a.name, &b.name));
 
     Ok(entries)
 }
