@@ -19,7 +19,6 @@
     <div v-if="isInFolderGrid && activeTabId && currentFolderContext" class="folder-preview-container">
       <FolderGridPreview
         :folderContext="currentFolderContext"
-        :currentImagePath="currentImagePath"
         :focusedIndex="folderGridFocusedIndex !== null ? folderGridFocusedIndex : 0"
         @imageSelected="handleFolderGridImageSelected"
         @imageActivated="handleFolderGridImageActivated"
@@ -280,10 +279,6 @@ const currentFolderSize = computed(() => {
 const currentFolderContext = computed(() => {
   if (!activeTabId.value) return null
   return tabFolderContexts.value.get(activeTabId.value) || null
-})
-
-const currentImagePath = computed(() => {
-  return activeImage.value?.path || ''
 })
 
 // Get images for the selected group

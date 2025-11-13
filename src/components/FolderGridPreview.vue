@@ -18,32 +18,21 @@
       :getTitle="(item) => item.name || ''"
       :getAssetUrl="(item) => getImageAssetUrl(item.path || '')"
       :isLoaded="(item) => isImageLoaded(item.path || '')"
-      :getClasses="(item) => ({ active: isActiveImage(item.path || '') })"
       @itemClick="handleItemClick"
       @itemActivate="handleItemActivate"
       @itemsVisible="handleItemsVisible">
-      <template #item-overlay="{ item }">
-        <!-- Favourite Star Indicator -->
-        <div v-if="item && item.path && isImageInFavourites(item.path)" class="favourite-star-indicator">
-          ⭐
-        </div>
-      </template>
     </VirtualImageGrid>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { FolderContext } from '../types'
-import { useTabControls } from '../composables/useTabControls'
-import { useUIConfigurations } from '../composables/useUIConfigurations'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import type { FolderContext } from '../types'
 import VirtualImageGrid from './VirtualImageGrid.vue'
 
 // Props
 const props = defineProps<{
   folderContext: FolderContext
-  currentImagePath: string
   focusedIndex: number
 }>()
 
@@ -54,37 +43,23 @@ const emit = defineEmits<{
   metadataNeeded: [indices: number[]] // Request metadata loading
 }>()
 
-// Get functions from composables
-const { isImageFavourited } = useTabControls()
-const { setFolderGridFocus } = useUIConfigurations()
-
-// Computed
-const fileEntries = computed(() => props.folderContext.fileEntries)
-const loadedImages = computed(() => props.folderContext.loadedImages)
-const focusedIndex = computed(() => props.focusedIndex)
+// Direct access to folder context data
+const fileEntries = props.folderContext.fileEntries
+const loadedImages = props.folderContext.loadedImages
 
 // Helper functions for VirtualImageGrid
 const isImageLoaded = (path: string): boolean => {
-  return loadedImages.value.has(path)
-}
-
-const isActiveImage = (path: string): boolean => {
-  return path === props.currentImagePath
+  return loadedImages.has(path)
 }
 
 const getImageAssetUrl = (path: string): string => {
-  const imageData = loadedImages.value.get(path)
+  const imageData = loadedImages.get(path)
   return imageData?.assetUrl || convertFileSrc(path.replace(/\\/g, '/'))
-}
-
-const isImageInFavourites = (imagePath: string): boolean => {
-  return isImageFavourited(imagePath)
 }
 
 // Event handlers for VirtualImageGrid
 const handleItemClick = (index: number) => {
   emit('imageSelected', index)
-  // Note: setFolderGridFocus is handled by parent (ImageWorkspace) to avoid duplicate updates
 }
 
 const handleItemActivate = (index: number) => {
@@ -97,7 +72,7 @@ const pendingIndices: number[] = []
 
 const handleItemsVisible = (indices: number[]) => {
   indices.forEach((index) => {
-    const entry = fileEntries.value[index]
+    const entry = fileEntries[index]
     if (entry && !isImageLoaded(entry.path)) {
       if (!pendingIndices.includes(index)) {
         pendingIndices.push(index)
@@ -161,26 +136,4 @@ const handleItemsVisible = (indices: number[]) => {
   font-size: 0.875rem;
 }
 
-/* Custom styles for this grid (extends VirtualImageGrid) */
-.favourite-star-indicator {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  font-size: 20px;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
-  pointer-events: none;
-  z-index: 10;
-  opacity: 0.95;
-}
-
-/* Active state styling for folder grid */
-:deep(.grid-item.active) {
-  outline: 3px solid #22c55e;
-  outline-offset: -3px;
-}
-
-:deep(.grid-item.focused.active) {
-  outline: 3px solid #0ea5e9;
-  box-shadow: 0 0 20px rgba(14, 165, 233, 0.5);
-}
 </style>
