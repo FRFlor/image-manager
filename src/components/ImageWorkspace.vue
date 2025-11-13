@@ -15,8 +15,19 @@
       ref="tabBarRef"
     />
 
+    <!-- Folder Grid Preview (check first, before image viewer) -->
+    <div v-if="showFolderGrid && activeTabId && currentFolderContext" class="folder-preview-container">
+      <FolderGridPreview
+        :folderContext="currentFolderContext"
+        :currentImagePath="currentImagePath"
+        :focusedIndex="folderGridFocusedIndex !== null ? folderGridFocusedIndex : 0"
+        @imageSelected="handleFolderGridImageSelected"
+        @imageActivated="handleFolderGridImageActivated"
+        @metadataNeeded="handleFolderGridMetadataNeeded" />
+    </div>
+
     <!-- Content Area with Image and Controls -->
-    <div class="content-area" ref="contentAreaRef" v-if="activeImage || isImageCorrupted" @mousemove="handleWorkspaceMouseMove">
+    <div class="content-area" ref="contentAreaRef" v-else-if="activeImage || isImageCorrupted" @mousemove="handleWorkspaceMouseMove">
       <!-- Favourite Star Indicator (absolute positioned over image) -->
       <div v-if="shouldShowFavouriteStar" class="favourite-star">
         ⭐
@@ -85,17 +96,6 @@
         @imageSelected="handleGroupImageSelected"
         @nameChanged="(newName) => renameGroup(selectedGroupId!, newName)"
         @imageReordered="(direction, tabId) => moveTab(direction, tabId)" />
-    </div>
-
-    <!-- Folder Grid Preview -->
-    <div v-else-if="showFolderGrid && activeTabId && currentFolderContext" class="folder-preview-container">
-      <FolderGridPreview
-        :folderContext="currentFolderContext"
-        :currentImagePath="currentImagePath"
-        :focusedIndex="folderGridFocusedIndex !== null ? folderGridFocusedIndex : 0"
-        @imageSelected="handleFolderGridImageSelected"
-        @imageActivated="handleFolderGridImageActivated"
-        @metadataNeeded="handleFolderGridMetadataNeeded" />
     </div>
 
     <!-- Empty State -->
