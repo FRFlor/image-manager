@@ -95,6 +95,7 @@ const gridColumns = ref(6) // Default value
 const scrollTop = ref(0)
 const containerHeight = ref(0)
 const observerRef = ref<IntersectionObserver | null>(null)
+let scrollThrottleTimer: number | null = null
 
 // Helper functions that use props
 const getItemKey = (index: number): string => {
@@ -122,13 +123,19 @@ const getItemClasses = (index: number): any => {
   if (!item) return {}
 
   const customClasses = props.getClasses(item, index)
-  const focusedClass = props.focusedIndex === index ? { focused: true } : {}
+  const isFocused = props.focusedIndex === index
 
+  // Optimize: avoid object spread when possible
   if (typeof customClasses === 'string') {
-    return customClasses
+    return isFocused ? `${customClasses} focused` : customClasses
   }
 
-  return { ...customClasses, ...focusedClass }
+  // Only create new object when item is focused
+  if (isFocused) {
+    return { ...customClasses, focused: true }
+  }
+
+  return customClasses
 }
 
 // Calculate grid columns dynamically
@@ -198,12 +205,21 @@ const bottomSpacerHeight = computed(() => {
   return Math.max(0, remainingRows * ROW_HEIGHT)
 })
 
-// Handle scroll events
+// Handle scroll events with throttling for better performance
 const handleScroll = () => {
-  if (gridContainerRef.value) {
-    scrollTop.value = gridContainerRef.value.scrollTop
-    emit('scroll', scrollTop.value)
+  if (!gridContainerRef.value) return
+
+  // Throttle scroll updates to ~60 FPS (16ms) to reduce render cycles
+  if (scrollThrottleTimer !== null) {
+    return // Skip this scroll event
   }
+
+  scrollThrottleTimer = setTimeout(() => {
+    scrollThrottleTimer = null
+  }, 16) as unknown as number
+
+  scrollTop.value = gridContainerRef.value.scrollTop
+  emit('scroll', scrollTop.value)
 }
 
 // Update container height on mount and resize
@@ -296,10 +312,10 @@ const scrollToIndex = (index: number) => {
   const rowCenter = ROW_HEIGHT / 2
   const centeredScrollTop = targetScrollTop - containerCenter + rowCenter
 
-  // Smooth scroll to position
+  // Instant scroll for responsive keyboard navigation
   gridContainerRef.value.scrollTo({
     top: Math.max(0, centeredScrollTop),
-    behavior: 'smooth'
+    behavior: 'instant'
   })
 }
 

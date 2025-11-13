@@ -86,6 +86,18 @@ export function useTabControls() {
     return [...favouritesTabs, ...otherTabs]
   })
 
+  // Cached Set of favorited image paths for O(1) lookup performance
+  // This prevents O(n) iteration through all tabs on every favorite check
+  const favouritedImagePaths = computed(() => {
+    const paths = new Set<string>()
+    tabs.value.forEach(tab => {
+      if (tab.groupId === FAVOURITES_GROUP_ID) {
+        paths.add(tab.imageData.path)
+      }
+    })
+    return paths
+  })
+
   const activeTab = computed(() => {
     if (!activeTabId.value) return null
     return tabs.value.get(activeTabId.value) || null
@@ -719,9 +731,8 @@ export function useTabControls() {
 
   // Favourites management functions
   const isImageFavourited = (imagePath: string): boolean => {
-    // Check if any tab in the favourites group has this image path
-    const favouritesTabs = Array.from(tabs.value.values()).filter(tab => tab.groupId === FAVOURITES_GROUP_ID)
-    return favouritesTabs.some(tab => tab.imageData.path === imagePath)
+    // Use cached Set for O(1) lookup instead of O(n) iteration
+    return favouritedImagePaths.value.has(imagePath)
   }
 
   const toggleFavourite = (): void => {

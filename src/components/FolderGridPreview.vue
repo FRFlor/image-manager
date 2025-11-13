@@ -84,7 +84,7 @@ const isImageInFavourites = (imagePath: string): boolean => {
 // Event handlers for VirtualImageGrid
 const handleItemClick = (index: number) => {
   emit('imageSelected', index)
-  setFolderGridFocus(index)
+  // Note: setFolderGridFocus is handled by parent (ImageWorkspace) to avoid duplicate updates
 }
 
 const handleItemActivate = (index: number) => {
