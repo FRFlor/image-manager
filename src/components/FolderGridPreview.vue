@@ -173,12 +173,12 @@ const handleGridKeyDown = (event: KeyboardEvent) => {
   }
 }
 
-// Scroll focused item into view
+// Scroll focused item into view (centered vertically)
 const scrollToIndex = (index: number) => {
   nextTick(() => {
     const element = itemRefs.get(index)
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   })
 }
