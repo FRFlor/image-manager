@@ -38,27 +38,24 @@
       </button>
     </div>
 
-    <div class="grid-container">
-      <div
-        v-for="image in images"
-        :key="image.id"
-        class="grid-item"
-        :class="{ highlighted: selectedImageId === image.id }"
-        @click="selectImage(image.id)"
-        @dblclick="$emit('imageSelected', image.id)"
-        :title="image.name">
-        <img
-          :src="image.assetUrl"
-          :alt="image.name"
-          class="grid-thumbnail"
-          @error="handleImageError" />
+    <VirtualImageGrid
+      :items="images"
+      :focusedIndex="selectedImageIndex"
+      :keyboardNavigation="false"
+      :getKey="(item) => item.id || ''"
+      :getTitle="(item) => item.name || ''"
+      :getAssetUrl="(item) => item.assetUrl || ''"
+      :isLoaded="() => true"
+      :getClasses="(item) => ({ highlighted: selectedImageId === item.id })"
+      @itemClick="handleItemClick"
+      @itemDoubleClick="handleItemDoubleClick">
+      <template #item-overlay="{ item }">
         <!-- Favourite Star Indicator -->
-        <div v-if="isImageInFavourites(image.path)" class="favourite-star-indicator">
+        <div v-if="item && item.path && isImageInFavourites(item.path)" class="favourite-star-indicator">
           ⭐
         </div>
-        <div class="grid-item-name">{{ image.name }}</div>
-      </div>
-    </div>
+      </template>
+    </VirtualImageGrid>
   </div>
 </template>
 
@@ -66,6 +63,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { ImageData } from '../types'
 import { useTabControls } from '../composables/useTabControls'
+import VirtualImageGrid from './VirtualImageGrid.vue'
 
 // Props
 const props = defineProps<{
@@ -102,6 +100,22 @@ const selectImage = (imageId: string) => {
   selectedImageId.value = imageId
 }
 
+// Handle click from VirtualImageGrid (index-based) and convert to ID-based
+const handleItemClick = (index: number) => {
+  const image = props.images[index]
+  if (image) {
+    selectImage(image.id)
+  }
+}
+
+// Handle double-click from VirtualImageGrid (index-based)
+const handleItemDoubleClick = (index: number) => {
+  const image = props.images[index]
+  if (image) {
+    emit('imageSelected', image.id)
+  }
+}
+
 const moveImage = (fromIndex: number, direction: 'left' | 'right') => {
   const tabId = props.tabIds[fromIndex]
   if (tabId) {
@@ -112,11 +126,6 @@ const moveImage = (fromIndex: number, direction: 'left' | 'right') => {
 const handleNameChange = (event: Event) => {
   const input = event.target as HTMLInputElement
   emit('nameChanged', input.value)
-}
-
-const handleImageError = (event: Event) => {
-  const img = event.target as HTMLImageElement
-  img.style.display = 'none'
 }
 
 // Check if an image is favourited
@@ -284,66 +293,7 @@ onUnmounted(() => {
   font-size: 1rem;
 }
 
-.grid-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 3px;
-  padding: 2rem;
-  overflow-y: auto;
-  flex: 1;
-  align-content: start;
-}
-
-.grid-item {
-  position: relative;
-  width: 100%;
-  height: 200px;
-  background: #252525;
-  border-radius: 8px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.grid-item:hover {
-  transform: scale(1.05);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
-}
-
-.grid-item.highlighted {
-  outline: 3px solid #0ea5e9;
-  outline-offset: -3px;
-  box-shadow: 0 0 20px rgba(14, 165, 233, 0.5);
-}
-
-.grid-thumbnail {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.grid-item-name {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 0.5rem;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
-  color: #fff;
-  font-size: 0.875rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.grid-item:hover .grid-item-name {
-  opacity: 1;
-}
-
-/* Favourite Star Indicator */
+/* Custom styles for group grid (extends VirtualImageGrid) */
 .favourite-star-indicator {
   position: absolute;
   top: 6px;
@@ -355,21 +305,10 @@ onUnmounted(() => {
   opacity: 0.95;
 }
 
-/* Scrollbar styling */
-.grid-container::-webkit-scrollbar {
-  width: 8px;
-}
-
-.grid-container::-webkit-scrollbar-track {
-  background: #1a1a1a;
-}
-
-.grid-container::-webkit-scrollbar-thumb {
-  background: #444;
-  border-radius: 4px;
-}
-
-.grid-container::-webkit-scrollbar-thumb:hover {
-  background: #555;
+/* Highlighted state styling for group grid */
+:deep(.grid-item.highlighted) {
+  outline: 3px solid #0ea5e9;
+  outline-offset: -3px;
+  box-shadow: 0 0 20px rgba(14, 165, 233, 0.5);
 }
 </style>
