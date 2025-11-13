@@ -1,5 +1,9 @@
 import {computed, ref} from 'vue'
 import type {FolderContext, ImageData, TabData, TabGroup} from '../types'
+import { useSharedState } from './useSharedState'
+
+// Get shared state
+const { activeTabId } = useSharedState()
 
 // CONSTANTS
 export const FAVOURITES_GROUP_ID = 'favourites'
@@ -8,17 +12,13 @@ export const FAVOURITES_GROUP_ID = 'favourites'
 
 // Reactive state
 const tabs = ref<Map<string, TabData>>(new Map())
-const activeTabId = ref<string | null>(null)
+// Note: activeTabId is now imported from useSharedState
 const tabFolderContexts = ref<Map<string, FolderContext>>(new Map())
 
 // Tab groups state
 const tabGroups = ref<Map<string, TabGroup>>(new Map())
 const selectedGroupId = ref<string | null>(null)
 let nextGroupColorIndex = 0
-
-// Folder grid state
-const showFolderGrid = ref(false)
-const folderGridFocusedIndex = ref<number | null>(null)
 
 // Context menu state
 const contextMenuVisible = ref(false)
@@ -1481,35 +1481,6 @@ export function useTabControls() {
     loadedImageIndices.value.set(tabId, indices)
   }
 
-  // Folder grid management
-  const toggleFolderGrid = (): void => {
-    if (!activeTabId.value) {
-      console.warn('No active tab to show folder grid')
-      return
-    }
-
-    showFolderGrid.value = !showFolderGrid.value
-
-    if (showFolderGrid.value) {
-      // When entering folder grid, set focus to current image
-      const activeTab = tabs.value.get(activeTabId.value)
-      const folderContext = tabFolderContexts.value.get(activeTabId.value)
-
-      if (activeTab && folderContext) {
-        const currentImagePath = activeTab.imageData.path
-        const currentIndex = folderContext.fileEntries.findIndex(entry => entry.path === currentImagePath)
-        folderGridFocusedIndex.value = currentIndex >= 0 ? currentIndex : 0
-        console.log(`Entered folder grid view, focused on index ${folderGridFocusedIndex.value}`)
-      }
-    } else {
-      console.log('Exited folder grid view')
-    }
-  }
-
-  const setFolderGridFocus = (index: number): void => {
-    folderGridFocusedIndex.value = index
-  }
-
   return {
     // State
     tabs,
@@ -1612,12 +1583,6 @@ export function useTabControls() {
     activeTabLoadedIndices,
     addLoadedIndex,
     clearLoadedIndices,
-    initializeLoadedIndices,
-
-    // Folder grid
-    showFolderGrid,
-    folderGridFocusedIndex,
-    toggleFolderGrid,
-    setFolderGridFocus
+    initializeLoadedIndices
   }
 }

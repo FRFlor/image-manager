@@ -105,11 +105,6 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Open next image in new tab and switch to it'
   },
   {
-    key: 'y',
-    action: 'toggleFolderGrid',
-    description: 'Toggle folder grid view'
-  },
-  {
     key: 'o',
     modifiers: { ctrl: true },
     action: 'createNewTab',
@@ -275,32 +270,6 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Toggle fit modes (Cmd /)'
   },
 
-  // Fullscreen Mode
-  {
-    key: 'Enter',
-    modifiers: { meta: true },
-    action: 'toggleFullscreen',
-    description: 'Toggle fullscreen mode'
-  },
-  {
-    key: 'Enter',
-    modifiers: { ctrl: true },
-    action: 'toggleFullscreen',
-    description: 'Toggle fullscreen mode'
-  },
-  {
-    key: ' ',
-    modifiers: { meta: true },
-    action: 'toggleFullscreen',
-    description: 'Toggle fullscreen mode'
-  },
-  {
-    key: ' ',
-    modifiers: { ctrl: true },
-    action: 'toggleFullscreen',
-    description: 'Toggle fullscreen mode'
-  },
-
   // Session Management (for testing)
   {
     key: 's',
@@ -313,7 +282,38 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     modifiers: { meta: true, shift: true },
     action: 'saveAutoSession',
     description: 'Manually save auto-session (for testing - Mac)'
-  }
+  },
+
+  // View modes
+  {
+    key: 'y',
+    action: 'toggleFolderGrid',
+    description: 'Toggle folder grid view'
+  },
+  {
+    key: 'Enter',
+    modifiers: { meta: true },
+    action: 'toggleFullscreen',
+    description: 'Toggle fullscreen mode'
+  },
+  {
+    key: 'Enter',
+    modifiers: { ctrl: true },
+    action: 'toggleFullscreen',
+    description: 'Toggle fullscreen mode'
+  },
+  {
+    key: ' ',
+    modifiers: { meta: true },
+    action: 'toggleFullscreen',
+    description: 'Toggle fullscreen mode'
+  },
+  {
+    key: ' ',
+    modifiers: { ctrl: true },
+    action: 'toggleFullscreen',
+    description: 'Toggle fullscreen mode'
+  },
 ]
 
 // Helper function to check if a keyboard event matches a shortcut

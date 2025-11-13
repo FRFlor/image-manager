@@ -179,11 +179,7 @@ const {
   skipCorruptImages,
   activeTabLoadedIndices,
   addLoadedIndex,
-  initializeLoadedIndices,
-  showFolderGrid,
-  folderGridFocusedIndex,
-  toggleFolderGrid,
-  setFolderGridFocus
+  initializeLoadedIndices
 } = useTabControls()
 
 const {
@@ -203,7 +199,13 @@ const {
   resetImageView,
 } = useZoomControls()
 
-const { areZoomAndNavigationControlsVisible } = useUIConfigurations()
+const {
+  areZoomAndNavigationControlsVisible,
+  showFolderGrid,
+  folderGridFocusedIndex,
+  toggleFolderGrid,
+  setFolderGridFocus
+} = useUIConfigurations()
 
 const { isFullscreen, toggleFullscreen } = useFullscreen()
 

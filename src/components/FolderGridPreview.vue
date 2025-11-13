@@ -48,6 +48,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import type { FolderContext } from '../types'
 import { useTabControls } from '../composables/useTabControls'
+import { useUIConfigurations } from '../composables/useUIConfigurations'
 import { convertFileSrc } from '@tauri-apps/api/core'
 
 // Props
@@ -64,8 +65,9 @@ const emit = defineEmits<{
   metadataNeeded: [indices: number[]] // Request metadata loading
 }>()
 
-// Get favourites function from composable
-const { isImageFavourited, setFolderGridFocus } = useTabControls()
+// Get functions from composables
+const { isImageFavourited } = useTabControls()
+const { setFolderGridFocus } = useUIConfigurations()
 
 // State
 const gridContainerRef = ref<HTMLElement | null>(null)
