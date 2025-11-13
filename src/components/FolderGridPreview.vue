@@ -79,6 +79,23 @@ const loadedImages = computed(() => props.folderContext.loadedImages)
 
 const focusedIndex = computed(() => props.focusedIndex)
 
+// Cached maps for expensive lookups (avoids Map.has() calls in render loop)
+const loadedStatusMap = computed(() => {
+  const map = new Map<string, boolean>()
+  fileEntries.value.forEach(entry => {
+    map.set(entry.path, loadedImages.value.has(entry.path))
+  })
+  return map
+})
+
+const assetUrlMap = computed(() => {
+  const map = new Map<string, string>()
+  loadedImages.value.forEach((imageData, path) => {
+    map.set(path, imageData.assetUrl)
+  })
+  return map
+})
+
 // Calculate grid columns dynamically
 const gridColumns = ref(6) // Default value
 
@@ -94,18 +111,31 @@ const updateGridColumns = () => {
   }
 }
 
-// Set item ref for virtual scrolling
+// Set item ref and observe for lazy loading (optimized to avoid watcher overhead)
 const setItemRef = (el: any, index: number) => {
   if (el) {
-    itemRefs.set(index, el as HTMLElement)
+    const element = el as HTMLElement
+    itemRefs.set(index, element)
+
+    // Observe new item immediately if observer is ready
+    if (observerRef.value) {
+      nextTick(() => {
+        observerRef.value?.observe(element)
+      })
+    }
   } else {
+    // Unobserve and remove when element is unmounted
+    const existing = itemRefs.get(index)
+    if (existing && observerRef.value) {
+      observerRef.value.unobserve(existing)
+    }
     itemRefs.delete(index)
   }
 }
 
-// Check if image is loaded
+// Check if image is loaded (using cached map for performance)
 const isImageLoaded = (path: string): boolean => {
-  return loadedImages.value.has(path)
+  return loadedStatusMap.value.get(path) ?? false
 }
 
 // Check if this is the active image
@@ -113,13 +143,9 @@ const isActiveImage = (path: string): boolean => {
   return path === props.currentImagePath
 }
 
-// Get image asset URL
+// Get image asset URL (using cached map for performance)
 const getImageAssetUrl = (path: string): string => {
-  const imageData = loadedImages.value.get(path)
-  if (imageData) {
-    return imageData.assetUrl
-  }
-  return convertFileSrc(path.replace(/\\/g, '/'))
+  return assetUrlMap.value.get(path) || convertFileSrc(path.replace(/\\/g, '/'))
 }
 
 // Check if an image is favourited
@@ -183,29 +209,41 @@ const scrollToIndex = (index: number) => {
   })
 }
 
-// Intersection Observer for lazy loading
+// Intersection Observer for lazy loading with debounced batching
 const observerRef = ref<IntersectionObserver | null>(null)
+let metadataRequestTimer: number | null = null
+const pendingIndices: number[] = []
 
 const setupIntersectionObserver = () => {
   if (!gridContainerRef.value) return
 
   observerRef.value = new IntersectionObserver(
     (entries) => {
-      const indicesToLoad: number[] = []
-
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
           const element = entry.target as HTMLElement
           const index = parseInt(element.dataset.index || '-1', 10)
 
           if (index >= 0 && !isImageLoaded(fileEntries.value[index]?.path || '')) {
-            indicesToLoad.push(index)
+            // Add to pending batch
+            if (!pendingIndices.includes(index)) {
+              pendingIndices.push(index)
+            }
           }
         }
       })
 
-      if (indicesToLoad.length > 0) {
-        emit('metadataNeeded', indicesToLoad)
+      // Debounce: batch emit after 50ms to avoid overwhelming the backend
+      if (metadataRequestTimer !== null) {
+        clearTimeout(metadataRequestTimer)
+      }
+
+      if (pendingIndices.length > 0) {
+        metadataRequestTimer = setTimeout(() => {
+          emit('metadataNeeded', [...pendingIndices])
+          pendingIndices.length = 0 // Clear the array
+          metadataRequestTimer = null
+        }, 50) as unknown as number
       }
     },
     {
@@ -220,19 +258,6 @@ const setupIntersectionObserver = () => {
     observerRef.value?.observe(element)
   })
 }
-
-// Watch for changes to itemRefs and re-observe
-watch(
-  () => itemRefs.size,
-  () => {
-    if (observerRef.value) {
-      // Re-observe all items
-      itemRefs.forEach((element) => {
-        observerRef.value?.observe(element)
-      })
-    }
-  }
-)
 
 // Focus the grid container on mount
 onMounted(async () => {
@@ -256,6 +281,11 @@ onUnmounted(() => {
   window.removeEventListener('resize', updateGridColumns)
   if (observerRef.value) {
     observerRef.value.disconnect()
+  }
+  // Clean up pending metadata request timer
+  if (metadataRequestTimer !== null) {
+    clearTimeout(metadataRequestTimer)
+    metadataRequestTimer = null
   }
 })
 
