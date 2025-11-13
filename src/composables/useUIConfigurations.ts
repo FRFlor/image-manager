@@ -4,13 +4,12 @@ import { useSharedState } from './useSharedState'
 import { useTabControls } from './useTabControls'
 
 // Get shared state
-const { activeTabId } = useSharedState()
+const { activeTabId, isInFolderGrid } = useSharedState()
 
 // UI visibility state
 const areZoomAndNavigationControlsVisible = ref(true)
 
-// Folder grid view state
-const showFolderGrid = ref(false)
+// Folder grid view state (focused index only - visibility is in shared state)
 const folderGridFocusedIndex = ref<number | null>(null)
 
 export function useUIConfigurations() {
@@ -28,9 +27,9 @@ export function useUIConfigurations() {
             return
         }
 
-        showFolderGrid.value = !showFolderGrid.value
+        isInFolderGrid.value = !isInFolderGrid.value
 
-        if (showFolderGrid.value) {
+        if (isInFolderGrid.value) {
             // When entering folder grid, set focus to current image
             const activeTab = tabs.value.get(activeTabId.value)
             const folderContext = tabFolderContexts.value.get(activeTabId.value)
@@ -53,7 +52,7 @@ export function useUIConfigurations() {
     return {
         areZoomAndNavigationControlsVisible,
         toggleControlsVisibility,
-        showFolderGrid,
+        isInFolderGrid,
         folderGridFocusedIndex,
         toggleFolderGrid,
         setFolderGridFocus

@@ -10,12 +10,16 @@ import { ref } from 'vue'
 // Active tab ID - shared between useTabControls and useUIConfigurations
 const activeTabId = ref<string | null>(null)
 
+// Folder grid visibility - shared between useUIConfigurations and useShortcutContext
+const isInFolderGrid = ref(false)
+
 /**
  * Composable that provides access to shared reactive state
  * Import and use this in other composables that need shared state
  */
 export function useSharedState() {
   return {
-    activeTabId
+    activeTabId,
+    isInFolderGrid
   }
 }

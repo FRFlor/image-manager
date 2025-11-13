@@ -1,6 +1,10 @@
 import { readonly, ref } from 'vue'
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from '../config/keyboardShortcuts'
-import {useZoomControls} from "./useZoomControls.ts"
+import { useZoomControls } from "./useZoomControls.ts"
+import { useSharedState } from './useSharedState'
+
+// Get shared state
+const { isInFolderGrid } = useSharedState()
 
 export type ShortcutContext = 'default' | 'image-pan'
 
@@ -129,6 +133,11 @@ export function useShortcutContext(actions?: KeyboardActions) {
   const handleKeyDown = (event: KeyboardEvent) => {
     // Don't handle keyboard shortcuts when typing in inputs
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+      return
+    }
+
+    // Don't handle keyboard shortcuts when in folder grid - let component handle it
+    if (isInFolderGrid.value) {
       return
     }
 

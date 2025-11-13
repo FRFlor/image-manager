@@ -16,7 +16,7 @@
     />
 
     <!-- Folder Grid Preview (check first, before image viewer) -->
-    <div v-if="showFolderGrid && activeTabId && currentFolderContext" class="folder-preview-container">
+    <div v-if="isInFolderGrid && activeTabId && currentFolderContext" class="folder-preview-container">
       <FolderGridPreview
         :folderContext="currentFolderContext"
         :currentImagePath="currentImagePath"
@@ -201,7 +201,7 @@ const {
 
 const {
   areZoomAndNavigationControlsVisible,
-  showFolderGrid,
+  isInFolderGrid,
   folderGridFocusedIndex,
   toggleFolderGrid,
   setFolderGridFocus
