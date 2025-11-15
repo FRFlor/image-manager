@@ -999,18 +999,61 @@ const handleFolderGridImageActivated = async (index: number): Promise<void> => {
   const folderContext = tabFolderContexts.value.get(activeTabId.value)
   if (!folderContext) return
 
-  const fileEntry = folderContext.fileEntries[index]
+  let targetIndex = index
+  let fileEntry = folderContext.fileEntries[targetIndex]
   if (!fileEntry) return
 
   // Load the image metadata if not already loaded
   let imageData: ImageData | null = folderContext.loadedImages.get(fileEntry.path) || null
   if (!imageData) {
     imageData = await loadImageMetadata(fileEntry.path, folderContext)
-    if (!imageData) {
-      console.error('Failed to load image metadata:', fileEntry.path)
+    if (imageData) {
+      folderContext.loadedImages.set(fileEntry.path, imageData)
+    }
+  }
+
+  // If skip corrupt images is enabled and this image is corrupted, find next valid one
+  if (skipCorruptImages.value && imageData === null) {
+    console.log('Image is corrupt and skipCorruptImages is enabled, searching for next valid image...')
+    const startIndex = targetIndex
+    let attempts = 0
+    const maxAttempts = folderContext.fileEntries.length
+
+    // Search forward for a valid image
+    while (imageData === null && attempts < maxAttempts) {
+      attempts++
+      targetIndex = (targetIndex + 1) % folderContext.fileEntries.length
+
+      // If we've looped back to start, stop
+      if (targetIndex === startIndex) {
+        console.log('All images are corrupt, cannot activate')
+        return
+      }
+
+      fileEntry = folderContext.fileEntries[targetIndex]
+      if (!fileEntry) break
+
+      // Try to load this image
+      imageData = folderContext.loadedImages.get(fileEntry.path) || null
+      if (!imageData) {
+        imageData = await loadImageMetadata(fileEntry.path, folderContext)
+        if (imageData) {
+          folderContext.loadedImages.set(fileEntry.path, imageData)
+        }
+      }
+    }
+
+    // If still no valid image found, don't activate
+    if (imageData === null || !fileEntry) {
+      console.log('No valid images found in folder')
       return
     }
-    folderContext.loadedImages.set(fileEntry.path, imageData)
+
+    console.log(`Found valid image after ${attempts} attempt(s): ${fileEntry.name}`)
+  } else if (!imageData) {
+    // Not skipping corrupted images, but this one failed to load
+    console.error('Failed to load image metadata:', fileEntry.path)
+    return
   }
 
   // Update the current tab's image (imageData is guaranteed to be non-null here)
