@@ -96,6 +96,7 @@ const scrollTop = ref(0)
 const containerHeight = ref(0)
 const observerRef = ref<IntersectionObserver | null>(null)
 let scrollThrottleTimer: number | null = null
+let keyboardThrottleTimer: number | null = null
 
 // Helper functions that use props
 const getItemKey = (index: number): string => {
@@ -118,24 +119,27 @@ const isItemLoaded = (index: number): boolean => {
   return item ? props.isLoaded(item, index) : false
 }
 
+// Optimized: minimal object creation, fast comparison
 const getItemClasses = (index: number): any => {
   const item = props.items[index]
   if (!item) return {}
 
-  const customClasses = props.getClasses(item, index)
   const isFocused = props.focusedIndex === index
 
-  // Optimize: avoid object spread when possible
+  // Fast path: if not focused and no custom classes, return empty object
+  if (!isFocused) {
+    const customClasses = props.getClasses(item, index)
+    // Return directly without any processing if string or empty
+    if (typeof customClasses === 'string') return customClasses
+    return customClasses
+  }
+
+  // Item is focused - add focused class
+  const customClasses = props.getClasses(item, index)
   if (typeof customClasses === 'string') {
-    return isFocused ? `${customClasses} focused` : customClasses
+    return `${customClasses} focused`
   }
-
-  // Only create new object when item is focused
-  if (isFocused) {
-    return { ...customClasses, focused: true }
-  }
-
-  return customClasses
+  return { ...customClasses, focused: true }
 }
 
 // Calculate grid columns dynamically
@@ -273,26 +277,36 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
   const current = props.focusedIndex
 
+  // Throttle keyboard navigation to max 60 FPS (~16ms) for better performance
+  const handleNavigation = (newIndex: number) => {
+    if (keyboardThrottleTimer !== null) {
+      return // Skip this key press
+    }
+
+    keyboardThrottleTimer = setTimeout(() => {
+      keyboardThrottleTimer = null
+    }, 16) as unknown as number
+
+    emit('itemClick', newIndex)
+    scrollToIndex(newIndex)
+  }
+
   if (event.key === 'ArrowRight') {
     event.preventDefault()
     const next = Math.min(current + 1, props.items.length - 1)
-    emit('itemClick', next)
-    scrollToIndex(next)
+    handleNavigation(next)
   } else if (event.key === 'ArrowLeft') {
     event.preventDefault()
     const prev = Math.max(current - 1, 0)
-    emit('itemClick', prev)
-    scrollToIndex(prev)
+    handleNavigation(prev)
   } else if (event.key === 'ArrowDown') {
     event.preventDefault()
     const next = Math.min(current + gridColumns.value, props.items.length - 1)
-    emit('itemClick', next)
-    scrollToIndex(next)
+    handleNavigation(next)
   } else if (event.key === 'ArrowUp') {
     event.preventDefault()
     const prev = Math.max(current - gridColumns.value, 0)
-    emit('itemClick', prev)
-    scrollToIndex(prev)
+    handleNavigation(prev)
   } else if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
     emit('itemActivate', current)

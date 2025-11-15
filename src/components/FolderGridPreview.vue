@@ -71,16 +71,16 @@ let metadataRequestTimer: number | null = null
 const pendingIndices: number[] = []
 
 const handleItemsVisible = (indices: number[]) => {
+  // Only process indices for unloaded images
   indices.forEach((index) => {
     const entry = fileEntries[index]
-    if (entry && !isImageLoaded(entry.path)) {
-      if (!pendingIndices.includes(index)) {
-        pendingIndices.push(index)
-      }
+    // Skip if already loaded OR already pending
+    if (entry && !isImageLoaded(entry.path) && !pendingIndices.includes(index)) {
+      pendingIndices.push(index)
     }
   })
 
-  // Debounce: batch emit after 50ms to avoid overwhelming the backend
+  // Debounce: batch emit after 150ms to avoid overwhelming the backend during rapid navigation
   if (metadataRequestTimer !== null) {
     clearTimeout(metadataRequestTimer)
   }
@@ -90,7 +90,7 @@ const handleItemsVisible = (indices: number[]) => {
       emit('metadataNeeded', [...pendingIndices])
       pendingIndices.length = 0
       metadataRequestTimer = null
-    }, 50) as unknown as number
+    }, 150) as unknown as number
   }
 }
 </script>
