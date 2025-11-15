@@ -3,7 +3,7 @@ import type {FolderContext, ImageData, TabData, TabGroup} from '../types'
 import { useSharedState } from './useSharedState'
 
 // Get shared state
-const { activeTabId } = useSharedState()
+const { activeTabId, skipCorruptImages } = useSharedState()
 
 // CONSTANTS
 export const FAVOURITES_GROUP_ID = 'favourites'
@@ -33,9 +33,6 @@ const lastClickedTabId = ref<string | null>(null)
 const layoutPosition = ref<'invisible' | 'top' | 'tree'>('tree')
 const layoutSize = ref<'small' | 'large'>('small')
 const treeCollapsed = ref(false)
-
-// Image loading preferences
-const skipCorruptImages = ref(true) // Default to skipping corrupted images
 
 // Duplicate tab detection state
 interface DuplicateTabInfo {
