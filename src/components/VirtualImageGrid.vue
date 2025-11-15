@@ -166,7 +166,7 @@ const visibleIndices = computed(() => {
   const visibleRowEnd = Math.ceil((scrollTop.value + containerHeight.value) / ROW_HEIGHT)
 
   // Add buffer rows (render extra 2 rows above and below for smooth scrolling)
-  const bufferRows = 2
+  const bufferRows = 6
   const startRow = Math.max(0, visibleRowStart - bufferRows)
   const endRow = Math.min(totalRows, visibleRowEnd + bufferRows)
 
@@ -309,7 +309,12 @@ const handleKeyDown = (event: KeyboardEvent) => {
     handleNavigation(prev)
   } else if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
-    emit('itemActivate', current)
+    event.stopPropagation() // Prevent bubbling to document-level shortcut handler
+    // Use props.focusedIndex directly to ensure we get the latest value,
+    // not the stale 'current' captured at function start
+    if (props.focusedIndex !== null) {
+      emit('itemActivate', props.focusedIndex)
+    }
   }
 }
 
