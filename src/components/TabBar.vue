@@ -118,7 +118,7 @@
       </template>
 
       <div class="context-menu-item" @click="handleOpenTabInNewWindow">
-        Open Tab in New Window
+        Open Tab{{ isMultiSelectOpenInNewWindow ? 's' : '' }} in New Window{{ isMultiSelectOpenInNewWindow ? ` (${selectionCount})` : '' }}
       </div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" @click="emit('tabClosed', contextMenuTabId!)">
@@ -224,6 +224,9 @@ const selectionCount = computed(() => selectedTabIds.value.size)
 const canCreateGroupFromSelection = computed(() => {
   const result = contextMenuCanCreateGroupFromSelection()
   return result.canCreate
+})
+const isMultiSelectOpenInNewWindow = computed(() => {
+  return selectedTabIds.value.size > 1 && contextMenuTabId.value && selectedTabIds.value.has(contextMenuTabId.value)
 })
 
 // Tab click handlers

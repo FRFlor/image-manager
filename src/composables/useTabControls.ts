@@ -1343,26 +1343,39 @@ export function useTabControls() {
     }
   }
 
-  // Open tab in new window
+  // Open tab(s) in new window - supports multi-selection
   const openTabInNewWindow = async (tabId: string) => {
     const { invoke } = await import('@tauri-apps/api/core')
-    const tab = tabs.value.get(tabId)
-    if (!tab) {
-      console.error('Tab not found:', tabId)
+
+    // Check if multiple tabs are selected and the context menu tab is among them
+    const hasMultiSelection = selectedTabIds.value.size > 1 && selectedTabIds.value.has(tabId)
+
+    let tabsToOpen: TabData[]
+    if (hasMultiSelection) {
+      // Open all selected tabs, maintaining their order
+      tabsToOpen = Array.from(tabs.value.values())
+        .filter(t => selectedTabIds.value.has(t.id))
+        .sort((a, b) => a.order - b.order)
+    } else {
+      // Single tab
+      const tab = tabs.value.get(tabId)
+      if (!tab) {
+        console.error('Tab not found:', tabId)
+        return
+      }
+      tabsToOpen = [tab]
+    }
+
+    if (tabsToOpen.length === 0) {
+      console.error('No tabs to open')
       return
     }
 
-    const folderContext = tabFolderContexts.value.get(tabId)
-    if (!folderContext) {
-      console.error('Folder context not found for tab:', tabId)
-      return
-    }
-
-    const sessionData = createNewWindowSessionData([tab])
+    const sessionData = createNewWindowSessionData(tabsToOpen)
 
     try {
       await invoke('launch_new_instance', { sessionData })
-      console.log('Launched new instance with tab:', tab.title)
+      console.log(`Launched new instance with ${tabsToOpen.length} tab(s)`)
     } catch (error) {
       console.error('Failed to launch new instance:', error)
     }
