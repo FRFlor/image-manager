@@ -12,7 +12,7 @@ import { useTabControls } from './composables/useTabControls'
 const { toggleControlsVisibility } = useUIConfigurations()
 const { saveSession, loadSession, reloadCurrentSession, updateCurrentSession } = useSessionManager()
 const { toggleFullscreen } = useFullscreen()
-const { toggleSkipCorruptImages, skipCorruptImages, activeTabId, tabFolderContexts } = useTabControls()
+const { toggleSkipCorruptImages, skipCorruptImages, activeTabId, tabs } = useTabControls()
 
 // Application state
 const appState = ref<ApplicationState>({
@@ -261,12 +261,12 @@ const handleOpenImageRequest = async () => {
     }
     
     // Open file dialog to select an image
-    // Start in the current image's folder if one is open
-    const currentFolderPath = activeTabId.value
-      ? tabFolderContexts.value.get(activeTabId.value)?.folderPath ?? null
+    // Start with the current image selected if one is open
+    const currentImagePath = activeTabId.value
+      ? tabs.value.get(activeTabId.value)?.imageData?.path ?? null
       : null
-    console.log('🔍 About to call open_image_dialog...', { startingDirectory: currentFolderPath })
-    const selectedPath = await invoke<string | null>('open_image_dialog', { startingDirectory: currentFolderPath })
+    console.log('🔍 About to call open_image_dialog...', { startingPath: currentImagePath })
+    const selectedPath = await invoke<string | null>('open_image_dialog', { startingPath: currentImagePath })
     console.log('🔍 Dialog result:', selectedPath)
     
     if (selectedPath) {

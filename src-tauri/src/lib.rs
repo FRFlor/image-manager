@@ -514,7 +514,7 @@ async fn open_folder_dialog(app_handle: tauri::AppHandle) -> Result<Option<Strin
 }
 
 #[tauri::command]
-async fn open_image_dialog(app_handle: tauri::AppHandle, starting_directory: Option<String>) -> Result<Option<String>, String> {
+async fn open_image_dialog(app_handle: tauri::AppHandle, starting_path: Option<String>) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     use std::sync::{Arc, Mutex};
     use tokio::sync::oneshot;
@@ -528,8 +528,14 @@ async fn open_image_dialog(app_handle: tauri::AppHandle, starting_directory: Opt
     let mut dialog = app_handle.dialog().file()
         .add_filter("Image Files", &extensions);
 
-    if let Some(dir) = starting_directory {
-        dialog = dialog.set_directory(dir);
+    if let Some(path_str) = starting_path {
+        let path = std::path::Path::new(&path_str);
+        if let Some(parent) = path.parent() {
+            dialog = dialog.set_directory(parent);
+        }
+        if let Some(filename) = path.file_name() {
+            dialog = dialog.set_file_name(filename.to_string_lossy());
+        }
     }
 
     dialog.pick_file(move |file_path| {
