@@ -205,16 +205,8 @@ const waitForComponent = async () => {
           console.log('Derivative session found, loading...')
           await imageViewer.value?.restoreFromSession(derivativeSession)
           console.log('Derivative session loaded and restored')
-        } else {
-          // Fall back to auto-session if no derivative session exists
-          console.log('No derivative session, attempting to load auto-session...')
-          const sessionLoaded = await imageViewer.value?.loadAutoSession()
-          if (sessionLoaded) {
-            console.log('Auto-session loaded and restored')
-          } else {
-            console.log('No auto-session found')
-          }
         }
+        // Auto-session can be loaded manually via menu if desired
       } catch (error) {
         console.error('Failed to load session:', error)
       } finally {
